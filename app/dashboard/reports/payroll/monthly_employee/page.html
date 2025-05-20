@@ -1,0 +1,512 @@
+<!-- file: app\dashboard\reports\payroll\monthly_employee\page.html -->
+
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>건설 현장 근로자 급여 관리</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .sticky-header th {
+            position: sticky;
+            top: 0;
+            background-color: #ffffff;
+            z-index: 10;
+        }
+        @media print {
+            .no-print {
+                display: none;
+            }
+            body {
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-4">건설 현장 근로자 급여 관리</h1>
+            
+            <!-- 컨트롤 패널 -->
+            <div class="bg-white p-4 rounded-lg shadow-md mb-6 no-print">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center space-x-4">
+                        <div>
+                            <label for="year-month" class="block text-sm font-medium text-gray-700">급여 년월:</label>
+                            <input type="month" id="year-month" name="year-month" value="2025-05" 
+                                class="mt-1 block w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        
+                        <div>
+                            <label for="site-select" class="block text-sm font-medium text-gray-700">현장 선택:</label>
+                            <select id="site-select" name="site-select" 
+                                class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="1" selected>신도림 아파트 신축공사</option>
+                                <option value="2">강남역 복합상가 리모델링</option>
+                                <option value="3">판교 오피스빌딩 신축</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                        <button id="add-payment" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            부정기 지급 항목 추가
+                        </button>
+                        <button id="add-deduction" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            공제 항목 추가
+                        </button>
+                        <button id="calculate-all" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            일괄 계산
+                        </button>
+                        <button id="print-report" 
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            인쇄
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 현장 정보 및 요약 -->
+            <div class="bg-white p-4 rounded-lg shadow-md mb-6 border border-gray-300">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">현장 정보</h2>
+                        <p class="text-gray-700">현장명: 신도림 아파트 신축공사</p>
+                        <p class="text-gray-700">담당자: 김현장</p>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">지급 요약</h2>
+                        <p class="text-gray-700">근로자 수: 5명</p>
+                        <p class="text-gray-700">총 지급액: 15,850,000원</p>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">공제 요약</h2>
+                        <p class="text-gray-700">총 공제액: 1,820,000원</p>
+                        <p class="text-gray-700">순 지급액: 14,030,000원</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 급여 데이터 테이블 -->
+        <div class="overflow-x-auto bg-white rounded-lg shadow-md">
+            <table class="min-w-full border-collapse border border-gray-300">
+                <thead class="bg-white sticky-header">
+                    <tr>
+                        <th colspan="5" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                            근로자 정보
+                        </th>
+                        <th colspan="7" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                            지급 항목
+                        </th>
+                        <th colspan="6" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                            공제 항목
+                        </th>
+                        <th colspan="2" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                            결과
+                        </th>
+                    </tr>
+                    <tr>
+                        <!-- 근로자 정보 헤더 -->
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">ID</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">이름</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">직종</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">근무일수</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">근무시간</th>
+                        
+                        <!-- 지급 항목 헤더 -->
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">기본급</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">연장수당</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">야간수당</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">휴일수당</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">식대</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">특별상여</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">지급 합계</th>
+                        
+                        <!-- 공제 항목 헤더 -->
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">소득세</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">국민연금</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">건강보험</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">고용보험</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">장기요양</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">공제 합계</th>
+                        
+                        <!-- 결과 헤더 -->
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">실지급액</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300 no-print">관리</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    <!-- 근로자 1 -->
+                    <tr>
+                        <!-- 근로자 정보 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">1001</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">김철수</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">목수</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">22</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">176</td>
+                        
+                        <!-- 지급 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">3,200,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">320,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">160,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">240,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border border-gray-300">4,070,000</td>
+                        
+                        <!-- 공제 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">120,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">135,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">98,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">34,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">12,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border border-gray-300">399,000</td>
+                        
+                        <!-- 결과 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-indigo-600 border border-gray-300">3,671,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 border border-gray-300 no-print">
+                            <button class="text-indigo-600 hover:text-indigo-900 mr-2">편집</button>
+                            <button class="text-gray-500 hover:text-gray-700">명세서</button>
+                        </td>
+                    </tr>
+                    
+                    <!-- 근로자 2 -->
+                    <tr>
+                        <!-- 근로자 정보 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">1002</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">이영희</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">미장공</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">20</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">160</td>
+                        
+                        <!-- 지급 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">2,800,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">200,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">180,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">300,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border border-gray-300">3,630,000</td>
+                        
+                        <!-- 공제 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">98,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">121,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">87,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">30,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">10,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border border-gray-300">346,000</td>
+                        
+                        <!-- 결과 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-indigo-600 border border-gray-300">3,284,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 border border-gray-300 no-print">
+                            <button class="text-indigo-600 hover:text-indigo-900 mr-2">편집</button>
+                            <button class="text-gray-500 hover:text-gray-700">명세서</button>
+                        </td>
+                    </tr>
+                    
+                    <!-- 근로자 3 -->
+                    <tr>
+                        <!-- 근로자 정보 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">1003</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">박민수</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">전기공</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">21</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">168</td>
+                        
+                        <!-- 지급 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">3,000,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">280,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">120,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border border-gray-300">3,550,000</td>
+                        
+                        <!-- 공제 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">105,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">126,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">92,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">32,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">11,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border border-gray-300">366,000</td>
+                        
+                        <!-- 결과 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-indigo-600 border border-gray-300">3,184,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 border border-gray-300 no-print">
+                            <button class="text-indigo-600 hover:text-indigo-900 mr-2">편집</button>
+                            <button class="text-gray-500 hover:text-gray-700">명세서</button>
+                        </td>
+                    </tr>
+                    
+                    <!-- 근로자 4 -->
+                    <tr>
+                        <!-- 근로자 정보 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">1004</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">홍길동</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">도장공</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">18</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">144</td>
+                        
+                        <!-- 지급 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">2,500,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">100,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border border-gray-300">2,900,000</td>
+                        
+                        <!-- 공제 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">85,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">112,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">78,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">28,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">9,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border border-gray-300">312,000</td>
+                        
+                        <!-- 결과 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-indigo-600 border border-gray-300">2,588,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 border border-gray-300 no-print">
+                            <button class="text-indigo-600 hover:text-indigo-900 mr-2">편집</button>
+                            <button class="text-gray-500 hover:text-gray-700">명세서</button>
+                        </td>
+                    </tr>
+                    
+                    <!-- 근로자 5 -->
+                    <tr>
+                        <!-- 근로자 정보 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">1005</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">정재훈</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">기계공</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">20</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">160</td>
+                        
+                        <!-- 지급 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">2,800,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">220,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">0</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">180,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">150,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">500,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border border-gray-300">3,850,000</td>
+                        
+                        <!-- 공제 항목 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">115,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">132,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">94,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">33,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">12,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border border-gray-300">386,000</td>
+                        
+                        <!-- 결과 -->
+                        <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-indigo-600 border border-gray-300">3,464,000</td>
+                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500 border border-gray-300 no-print">
+                            <button class="text-indigo-600 hover:text-indigo-900 mr-2">편집</button>
+                            <button class="text-gray-500 hover:text-gray-700">명세서</button>
+                        </td>
+                    </tr>
+                </tbody>
+                <tfoot class="bg-white">
+                    <tr>
+                        <td colspan="5" class="px-3 py-3 text-right text-sm font-semibold text-gray-900 border border-gray-300">
+                            합계
+                        </td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">14,300,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">1,170,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">280,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">700,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">750,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">800,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-green-600 border border-gray-300">18,000,000</td>
+                        
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">523,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">626,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">449,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">157,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-gray-900 border border-gray-300">54,000</td>
+                        <td class="px-3 py-3 text-sm font-semibold text-red-600 border border-gray-300">1,809,000</td>
+                        
+                        <td class="px-3 py-3 text-sm font-semibold text-indigo-600 border border-gray-300">16,191,000</td>
+                        <td class="px-3 py-3 text-sm text-gray-500 border border-gray-300 no-print">
+                            -
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    
+    <!-- 모달 - 부정기 지급 항목 추가 -->
+    <div id="payment-modal" class="fixed inset-0 overflow-y-auto hidden" style="z-index: 50">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                                부정기 지급 항목 추가
+                            </h3>
+                            <div class="mt-4 space-y-4">
+                                <div>
+                                    <label for="payment-name" class="block text-sm font-medium text-gray-700">항목명</label>
+                                    <input type="text" name="payment-name" id="payment-name" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="예: 명절상여금, 성과급">
+                                </div>
+                                <div>
+                                    <label for="payment-amount" class="block text-sm font-medium text-gray-700">지급 금액</label>
+                                    <input type="number" name="payment-amount" id="payment-amount" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="금액">
+                                </div>
+                                <div>
+                                    <label for="payment-desc" class="block text-sm font-medium text-gray-700">설명 (선택사항)</label>
+                                    <textarea id="payment-desc" name="payment-desc" rows="3" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="항목에 대한 설명"></textarea>
+                                </div>
+                                <div>
+                                    <label for="payment-workers" class="block text-sm font-medium text-gray-700">적용 대상</label>
+                                    <div class="mt-2 space-y-2">
+                                        <div class="flex items-center">
+                                            <input id="all-workers" name="payment-workers" type="radio" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300" checked>
+                                            <label for="all-workers" class="ml-3 block text-sm font-medium text-gray-700">
+                                                전체 근로자
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <input id="select-workers" name="payment-workers" type="radio" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                            <label for="select-workers" class="ml-3 block text-sm font-medium text-gray-700">
+                                                선택한 근로자
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        추가
+                    </button>
+                    <button type="button" id="payment-modal-close" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        취소
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 모달 - 공제 항목 추가 -->
+    <div id="deduction-modal" class="fixed inset-0 overflow-y-auto hidden" style="z-index: 50">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                                공제 항목 추가
+                            </h3>
+                            <div class="mt-4 space-y-4">
+                                <div>
+                                    <label for="deduction-name" class="block text-sm font-medium text-gray-700">항목명</label>
+                                    <input type="text" name="deduction-name" id="deduction-name" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="예: 상조회비, 사내대출상환금">
+                                </div>
+                                <div>
+                                    <label for="deduction-amount" class="block text-sm font-medium text-gray-700">공제 금액</label>
+                                    <input type="number" name="deduction-amount" id="deduction-amount" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="금액">
+                                </div>
+                                <div>
+                                    <label for="deduction-desc" class="block text-sm font-medium text-gray-700">설명 (선택사항)</label>
+                                    <textarea id="deduction-desc" name="deduction-desc" rows="3" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="항목에 대한 설명"></textarea>
+                                </div>
+                                <div>
+                                    <label for="deduction-workers" class="block text-sm font-medium text-gray-700">적용 대상</label>
+                                    <div class="mt-2 space-y-2">
+                                        <div class="flex items-center">
+                                            <input id="all-workers-deduction" name="deduction-workers" type="radio" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300" checked>
+                                            <label for="all-workers-deduction" class="ml-3 block text-sm font-medium text-gray-700">
+                                                전체 근로자
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <input id="select-workers-deduction" name="deduction-workers" type="radio" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                                            <label for="select-workers-deduction" class="ml-3 block text-sm font-medium text-gray-700">
+                                                선택한 근로자
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        추가
+                    </button>
+                    <button type="button" id="deduction-modal-close" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        취소
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 현재 날짜 설정
+        const setCurrentDate = () => {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('year-month').value = `${year}-${month}`;
+        };
+        
+        // 모달 토글 함수
+        const toggleModal = (modalId) => {
+            const modal = document.getElementById(modalId);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        };
+        
+        // 이벤트 리스너 등록
+        document.addEventListener('DOMContentLoaded', () => {
+            setCurrentDate();
+            
+            // 모달 열기 이벤트
+            document.getElementById('add-payment').addEventListener('click', () => {
+                toggleModal('payment-modal');
+            });
+            
+            document.getElementById('add-deduction').addEventListener('click', () => {
+                toggleModal('deduction-modal');
+            });
+            
+            // 모달 닫기 이벤트
+            document.getElementById('payment-modal-close').addEventListener('click', () => {
+                toggleModal('payment-modal');
+            });
+            
+            document.getElementById('deduction-modal-close').addEventListener('click', () => {
+                toggleModal('deduction-modal');
+            });
+            
+            // 인쇄 기능
+            document.getElementById('print-report').addEventListener('click', () => {
+                window.print();
+            });
+        });
+    </script>
+</body>
+</html>
