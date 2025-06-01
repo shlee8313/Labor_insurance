@@ -1,9 +1,5 @@
 //file: app/dashboard/workers/add/page.js
 
-// Modified version of app/dashboard/workers/add/page.js with bank and insurance fields
-
-//file: app/dashboard/workers/add/page.js
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -14,16 +10,6 @@ import { useAuthStore } from "@/lib/store/authStore";
 import useCodeStore from "@/lib/store/codeStore";
 import { Search } from "lucide-react";
 import { AlertTriangle, Save } from "lucide-react";
-// import {
-//   Building2,
-//   ChevronDown,
-//   RefreshCw,
-//   Check,
-//   UserPlus,
-//   X,
-//   Save,
-//   AlertTriangle,
-// } from "lucide-react";
 
 export default function WorkerAddPage() {
   const router = useRouter();
@@ -40,15 +26,18 @@ export default function WorkerAddPage() {
   const [systemSettings, setSystemSettings] = useState({});
   const [bankList, setBankList] = useState([]);
   const [initialWorkerSites, setInitialWorkerSites] = useState([]);
+
   // 검색어 상태
   const [nationalitySearch, setNationalitySearch] = useState("");
   const [residenceStatusSearch, setResidenceStatusSearch] = useState("");
   const [jobCodeSearch, setJobCodeSearch] = useState("");
   const [bankSearch, setBankSearch] = useState("");
   const [siteSearch, setSiteSearch] = useState("");
+
   // 기존 상태 변수 아래에 다음 상태를 추가
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState(null);
+
   // 드롭다운 열림 상태
   const [nationalityDropdownOpen, setNationalityDropdownOpen] = useState(false);
   const [residenceStatusDropdownOpen, setResidenceStatusDropdownOpen] = useState(false);
@@ -146,6 +135,15 @@ export default function WorkerAddPage() {
     // 은행 정보 추가
     bank_name: "",
     bank_account: "",
+    // 급여 정보 추가 (근로자 유형별)
+    daily_wage: "", // 일당 (일용직)
+    daily_wage_formatted: "", // 일당 표시용
+    hourly_wage: "", // 시급 (단시간)
+    hourly_wage_formatted: "", // 시급 표시용
+    contract_start_date: "", // 입사일 (계약직, 정규직)
+    contract_end_date: "", // 계약종료일 (계약직, 정규직)
+    base_salary: "", // 기본급 (계약직, 정규직)
+    base_salary_formatted: "", // 기본급 표시용
     // 국민연금 정보 추가
     np_acquisition_code: "",
     np_acquisition_name: "",
@@ -182,6 +180,7 @@ export default function WorkerAddPage() {
   useEffect(() => {
     setInitialWorkerSites([...workerSites]);
   }, []);
+
   // 페이지 로드 시 코드 마스터 및 현장 데이터 로드
   useEffect(() => {
     const initializeData = async () => {
@@ -291,7 +290,7 @@ export default function WorkerAddPage() {
 
         if (companyData?.company_id) {
           sitesQuery = supabase
-            .from("construction_sites")
+            .from("location_sites")
             .select("*")
             .eq("company_id", companyData.company_id)
             .eq("status", "active")
@@ -300,16 +299,16 @@ export default function WorkerAddPage() {
       } else {
         // manager, site_manager는 배정된 현장만 조회
         sitesQuery = supabase
-          .from("user_construction_sites")
+          .from("user_location_sites")
           .select(
             `
             site_id,
-            construction_site:construction_sites(*)
+            location_site:location_sites(*)
           `
           )
           .eq("user_id", currentUser.id)
           .is("removed_date", null)
-          .eq("construction_site.status", "active");
+          .eq("location_site.status", "active");
       }
 
       if (sitesQuery) {
@@ -322,7 +321,7 @@ export default function WorkerAddPage() {
         if (currentUser.role === "admin") {
           formattedSites = sitesData || [];
         } else {
-          formattedSites = (sitesData || []).map((item) => item.construction_site);
+          formattedSites = (sitesData || []).map((item) => item.location_site);
         }
 
         setSites(formattedSites);
@@ -402,6 +401,31 @@ export default function WorkerAddPage() {
       return;
     }
 
+    // 급여 관련 필드는 숫자만 허용하고 콤마 포맷팅
+    if (["daily_wage_formatted", "hourly_wage_formatted", "base_salary_formatted"].includes(name)) {
+      // 숫자만 추출 (콤마 제거)
+      const numbersOnly = value.replace(/[^0-9]/g, "");
+
+      // 콤마 포맷팅
+      const formatted = numbersOnly.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+      // 원본 필드명 결정
+      const originalFieldName = name.replace("_formatted", "");
+
+      setFormData((prev) => ({
+        ...prev,
+        [originalFieldName]: numbersOnly, // 숫자만 저장
+        [name]: formatted, // 포맷팅된 값 저장
+      }));
+      return;
+    }
+
+    // 기존 급여 필드 처리 제거 (위에서 처리됨)
+    if (["daily_wage", "hourly_wage", "base_salary"].includes(name)) {
+      // 이 부분은 더 이상 직접 사용되지 않음 (formatted 필드 사용)
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: newValue,
@@ -460,12 +484,18 @@ export default function WorkerAddPage() {
     setBankSearch("");
   };
 
-  // 현장 선택 핸들러
+  // 현장 선택 핸들러 (즉시 배정)
   const handleSiteSelect = (site) => {
-    setFormData((prev) => ({
-      ...prev,
-      site_id: site.site_id,
-    }));
+    // 이미 배정된 현장인지 확인
+    const isAlreadyAssigned = workerSites.some((ws) => ws.site_id === site.site_id);
+
+    if (!isAlreadyAssigned) {
+      // 현장 배정 목록에 추가
+      const updatedSites = [...workerSites, site];
+      setWorkerSites(updatedSites);
+      checkIfDirty(updatedSites);
+    }
+
     setSiteDropdownOpen(false);
     setSiteSearch("");
   };
@@ -499,51 +529,6 @@ export default function WorkerAddPage() {
 
     dropdownSetter(false);
     searchSetter("");
-  };
-
-  // 현장 배정 핸들러
-  // 현장 배정 핸들러
-  const handleAssignSite = (e) => {
-    e.preventDefault();
-    const siteId = formData.site_id;
-
-    if (!siteId) {
-      setError("배정할 현장을 선택해주세요.");
-      return;
-    }
-
-    try {
-      // 이미 배정된 현장인지 확인
-      const isAlreadyAssigned = workerSites.some((site) => site.site_id === parseInt(siteId));
-
-      if (isAlreadyAssigned) {
-        setError("이미 해당 현장에 배정되어 있습니다.");
-        return;
-      }
-
-      // 선택한 현장 정보 가져오기
-      const selectedSite = sites.find((site) => site.site_id === parseInt(siteId));
-
-      if (selectedSite) {
-        // 현장 배정 목록에 추가
-        const updatedSites = [...workerSites, selectedSite];
-        setWorkerSites(updatedSites);
-
-        // 초기 상태와 비교하여 isDirty 설정
-        checkIfDirty(updatedSites);
-      }
-
-      // 폼 초기화
-      setFormData((prev) => ({
-        ...prev,
-        site_id: "",
-      }));
-    } catch (error) {
-      console.error("현장 배정 오류:", error);
-      setError("현장 배정 중 오류가 발생했습니다.");
-    } finally {
-      setSaveLoading(false);
-    }
   };
 
   // 현장 제거 핸들러
@@ -581,6 +566,87 @@ export default function WorkerAddPage() {
     return true;
   };
 
+  // 본사 현장 찾기 또는 생성 함수
+  const findOrCreateHeadOfficeSite = async (companyId) => {
+    try {
+      console.log(`본사 현장 찾기 시작 - 회사 ID: ${companyId}`);
+
+      // 1. 먼저 "본사"라는 이름의 현장을 찾기
+      let { data: headOfficeSite, error: findError } = await supabase
+        .from("location_sites")
+        .select("*")
+        .eq("company_id", companyId)
+        .eq("site_name", "본사")
+        .maybeSingle();
+
+      if (findError && findError.code !== "PGRST116") {
+        console.error("본사 현장 검색 오류:", findError);
+        throw findError;
+      }
+
+      // 2. 본사 현장이 있으면 반환
+      if (headOfficeSite) {
+        console.log("기존 본사 현장을 사용합니다:", headOfficeSite.site_name);
+        return headOfficeSite;
+      }
+
+      // 3. 본사 현장이 없으면 본사 현장을 자동 생성
+      console.log("본사 현장이 없어 자동 생성을 시도합니다.");
+
+      // 회사 정보 조회 (companies 테이블이 없을 수 있으므로 안전하게 처리)
+      let companyInfo = null;
+      try {
+        const { data, error: companyError } = await supabase
+          .from("companies")
+          .select("company_name, address, contact_number, representative_name")
+          .eq("company_id", companyId)
+          .maybeSingle();
+
+        if (!companyError) {
+          companyInfo = data;
+        }
+      } catch (err) {
+        console.log("회사 정보 조회 실패, 기본값 사용:", err);
+      }
+
+      // 본사 현장 생성 데이터 준비
+      const newSiteData = {
+        company_id: companyId,
+        site_name: "본사",
+        address: companyInfo?.address || "주소 미등록",
+        contact_number: companyInfo?.contact_number || "000-0000-0000",
+        contract_start_date: new Date().toISOString().split("T")[0],
+        site_manager: companyInfo?.representative_name || "관리자", // 필수 필드
+        status: "active",
+      };
+
+      console.log("생성할 본사 현장 데이터:", newSiteData);
+
+      // 본사 현장 생성
+      const { data: newHeadOfficeSite, error: createError } = await supabase
+        .from("location_sites")
+        .insert(newSiteData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error("본사 현장 생성 오류:", createError);
+        throw createError;
+      }
+
+      console.log("본사 현장이 자동으로 생성되었습니다:", newHeadOfficeSite);
+      return newHeadOfficeSite;
+    } catch (error) {
+      console.error("본사 현장 처리 상세 오류:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      return null;
+    }
+  };
+
   // 폼 제출 핸들러
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -613,41 +679,99 @@ export default function WorkerAddPage() {
         return;
       }
 
-      // 현장이 하나 이상 배정되어 있는지 확인
-      if (workerSites.length === 0) {
-        setError("적어도 하나의 현장에 배정해야 합니다.");
+      // 근로자 유형별 필수 입력값 확인
+      if (formData.worker_type === "daily" && !formData.daily_wage) {
+        setError("일용직의 경우 일당을 입력해주세요.");
+        return;
+      }
+      if (formData.worker_type === "part_time" && !formData.hourly_wage) {
+        setError("단시간 근로자의 경우 시급을 입력해주세요.");
+        return;
+      }
+      if (
+        (formData.worker_type === "contract" || formData.worker_type === "regular") &&
+        (!formData.contract_start_date || !formData.base_salary)
+      ) {
+        setError("계약직/정규직의 경우 입사일과 기본급을 입력해주세요.");
         return;
       }
 
+      // 회사 ID 조회
+      const { data: companyData, error: companyError } = await supabase
+        .from("user_companies")
+        .select("company_id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (companyError) throw companyError;
+
+      if (!companyData?.company_id) {
+        throw new Error("회사 정보를 찾을 수 없습니다.");
+      }
+
+      // 현장이 배정되지 않은 경우 본사로 배정
+      let assignedSites = [...workerSites];
+      if (assignedSites.length === 0) {
+        const headOfficeSite = await findOrCreateHeadOfficeSite(companyData.company_id);
+        if (headOfficeSite) {
+          assignedSites = [headOfficeSite];
+          console.log(`현장 미배정으로 '${headOfficeSite.site_name}' 현장에 자동 배정되었습니다.`);
+        } else {
+          setError(
+            "기본 현장 설정에 실패했습니다. 관리자에게 문의하거나 현장을 직접 배정해주세요."
+          );
+          return;
+        }
+      }
+
       // 1. 근로자 정보 등록
+      const workerInsertData = {
+        name: formData.name,
+        eng_name: formData.eng_name || null,
+        resident_number: formData.resident_number,
+        nationality_code: formData.nationality_code,
+        residence_status_code: formData.residence_status_code || null,
+        job_code: formData.job_code || null,
+        address: formData.address,
+        contact_number: formData.contact_number,
+        representative_yn: formData.representative_yn,
+        worker_type: formData.worker_type,
+        // 추가된 필드
+        bank_name: formData.bank_name || null,
+        bank_account: formData.bank_account || null,
+        resignation_date: formData.resignation_date || null, // 퇴직일
+        np_acquisition_code: formData.np_acquisition_code || null,
+        np_special_occupation_code: formData.np_special_occupation_code || "0",
+        np_pension_system_code: formData.np_pension_system_code || "0",
+        np_loss_code: formData.np_loss_code || null,
+        hi_acquisition_code: formData.hi_acquisition_code || null,
+        hi_premium_reduction_code: formData.hi_premium_reduction_code || null,
+        hi_loss_code: formData.hi_loss_code || null,
+        ei_acquisition_code: formData.ei_acquisition_code || null,
+        ei_premium_classification_reason: formData.ei_premium_classification_reason || null,
+        ei_loss_code: formData.ei_loss_code || null,
+      };
+
+      // 근로자 유형별 급여 정보 추가
+      if (formData.worker_type === "daily" && formData.daily_wage) {
+        workerInsertData.daily_wage = parseFloat(formData.daily_wage);
+      } else if (formData.worker_type === "part_time" && formData.hourly_wage) {
+        workerInsertData.hourly_rate = parseFloat(formData.hourly_wage);
+      } else if (formData.worker_type === "contract" || formData.worker_type === "regular") {
+        if (formData.contract_start_date) {
+          workerInsertData.contract_start_date = formData.contract_start_date;
+        }
+        if (formData.contract_end_date) {
+          workerInsertData.contract_end_date = formData.contract_end_date;
+        }
+        if (formData.base_salary) {
+          workerInsertData.monthly_salary = parseFloat(formData.base_salary);
+        }
+      }
+
       const { data: worker, error: workerError } = await supabase
         .from("workers")
-        .insert({
-          name: formData.name,
-          eng_name: formData.eng_name || null,
-          resident_number: formData.resident_number,
-          nationality_code: formData.nationality_code,
-          residence_status_code: formData.residence_status_code || null,
-          job_code: formData.job_code || null,
-          address: formData.address,
-          contact_number: formData.contact_number,
-          representative_yn: formData.representative_yn,
-          worker_type: formData.worker_type,
-          // 추가된 필드
-          bank_name: formData.bank_name || null,
-          bank_account: formData.bank_account || null,
-          resignation_date: formData.resignation_date || null, // 퇴직일
-          np_acquisition_code: formData.np_acquisition_code || null,
-          np_special_occupation_code: formData.np_special_occupation_code || "0",
-          np_pension_system_code: formData.np_pension_system_code || "0",
-          np_loss_code: formData.np_loss_code || null,
-          hi_acquisition_code: formData.hi_acquisition_code || null,
-          hi_premium_reduction_code: formData.hi_premium_reduction_code || null,
-          hi_loss_code: formData.hi_loss_code || null,
-          ei_acquisition_code: formData.ei_acquisition_code || null,
-          ei_premium_classification_reason: formData.ei_premium_classification_reason || null,
-          ei_loss_code: formData.ei_loss_code || null,
-        })
+        .insert(workerInsertData)
         .select()
         .single();
 
@@ -661,10 +785,11 @@ export default function WorkerAddPage() {
 
       // 2. 현장-근로자 연결 (work_records에 초기 레코드 생성)
       const todayDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD 형식
+      const currentYearMonth = todayDate.substring(0, 7); // YYYY-MM 형식
 
       // 배정된 모든 현장에 대해 work_records 생성
-      for (const site of workerSites) {
-        const { error: recordError } = await supabase.from("work_records").insert({
+      for (const site of assignedSites) {
+        const workRecordData = {
           worker_id: worker.worker_id,
           site_id: site.site_id,
           work_date: todayDate,
@@ -672,7 +797,15 @@ export default function WorkerAddPage() {
           work_type: "registration", // 특수 타입: 등록용
           daily_wage: 0, // 초기값
           status: "registration", // 특수 상태: 등록용
-        });
+          registration_month: currentYearMonth,
+        };
+
+        // 근로자 유형별 기본 급여 정보 설정
+        if (formData.worker_type === "daily" && formData.daily_wage) {
+          workRecordData.daily_wage = parseFloat(formData.daily_wage);
+        }
+
+        const { error: recordError } = await supabase.from("work_records").insert(workRecordData);
 
         if (recordError) throw recordError;
       }
@@ -681,7 +814,6 @@ export default function WorkerAddPage() {
       setLastSavedTime(new Date());
       // 성공 메시지 설정
       setSuccessMessage("근로자가 성공적으로 등록되었습니다.");
-      // setTimeout(() => setSuccessMessage(null), 3000); // 3초 후 메시지 사라짐
 
       // 성공 시 근로자 목록 페이지로 이동
       router.push("/dashboard/workers");
@@ -738,30 +870,6 @@ export default function WorkerAddPage() {
       <div className="w-full mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">근로자 추가</h1>
-          <div className="flex space-x-4">
-            {/* <button
-              type="button"
-              onClick={() => router.push("/dashboard/workers")}
-              className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-            >
-              취소
-            </button> */}
-            {/* <button
-              type="submit"
-              disabled={saveLoading}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:bg-blue-300 disabled:cursor-not-allowed"
-              onClick={handleSubmit}
-            >
-              {saveLoading ? (
-                <span className="flex items-center">
-                  <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                  처리 중...
-                </span>
-              ) : (
-                "저장"
-              )}
-            </button> */}
-          </div>
         </div>
 
         {error && (
@@ -836,10 +944,8 @@ export default function WorkerAddPage() {
                       maxLength={14}
                       required
                     />
-                    {/* <p className="text-xs text-gray-500 mt-1">
-                      주민번호는 자동으로 하이픈이 입력됩니다.
-                    </p> */}
                   </div>
+
                   {/* 연락처 */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -854,10 +960,8 @@ export default function WorkerAddPage() {
                       placeholder="010-0000-0000"
                       required
                     />
-                    {/* <p className="text-xs text-gray-500 mt-1">
-                      전화번호는 자동으로 하이픈이 입력됩니다.
-                    </p> */}
                   </div>
+
                   {/* 국적코드 */}
                   <div className="dropdown-container relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1034,6 +1138,7 @@ export default function WorkerAddPage() {
                     )}
                   </div>
                   <div></div>
+
                   {/* 은행명 */}
                   <div className="dropdown-container relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1">은행명</label>
@@ -1096,8 +1201,9 @@ export default function WorkerAddPage() {
                     />
                     <p className="text-xs text-gray-500 mt-1">계좌번호는 숫자만 입력 가능합니다.</p>
                   </div>
+
                   {/* 퇴직일 */}
-                  <div className="justify-start">
+                  {/* <div className="justify-start">
                     <label className="block text-sm font-medium text-gray-700 mb-1">퇴직일</label>
                     <input
                       type="date"
@@ -1107,7 +1213,7 @@ export default function WorkerAddPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                     <p className="text-xs text-red-500 mt-1">퇴직한 경우에만 입력하세요.</p>
-                  </div>
+                  </div> */}
 
                   {/* 주소 */}
                   <div className="col-span-3">
@@ -1124,7 +1230,7 @@ export default function WorkerAddPage() {
                     />
                   </div>
                   <div></div>
-                  {/* 근로자 유형 */}
+
                   {/* 근로자 유형 */}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1197,6 +1303,98 @@ export default function WorkerAddPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* 근로자 유형별 추가 필드 */}
+                <div className="border-t border-gray-200 pt-6 mb-6">
+                  <h3 className="text-lg font-semibold mb-4">급여 정보</h3>
+
+                  {/* 일용직 - 일당 */}
+                  {formData.worker_type === "daily" && (
+                    <div className="grid grid-cols-4 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          일당 <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="daily_wage_formatted"
+                          value={formData.daily_wage_formatted}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="예: 150,000"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">일당을 입력하세요 (원)</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 단시간 - 시급 */}
+                  {formData.worker_type === "part_time" && (
+                    <div className="grid grid-cols-4 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          시급 <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="hourly_wage_formatted"
+                          value={formData.hourly_wage_formatted}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="예: 9,620"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">시급을 입력하세요 (원)</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 계약직/정규직 - 입사일, 계약종료일, 기본급 */}
+                  {(formData.worker_type === "contract" || formData.worker_type === "regular") && (
+                    <div className="grid grid-cols-4 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          입사일 <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          name="contract_start_date"
+                          value={formData.contract_start_date}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          계약종료일
+                        </label>
+                        <input
+                          type="date"
+                          name="contract_end_date"
+                          value={formData.contract_end_date}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="text-xs text-red-500 mt-1">퇴직한 경우에만 입력하세요.</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          기본급 <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="base_salary_formatted"
+                          value={formData.base_salary_formatted}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="예: 2,500,000"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">월 기본급을 입력하세요 (원)</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -1205,6 +1403,7 @@ export default function WorkerAddPage() {
             {/* 현장 배정 정보 */}
             <div className="bg-white shadow-xl rounded-lg p-4">
               <h2 className="text-xl font-semibold mb-4">현장 배정 정보</h2>
+
               {/* 현재 배정된 현장 목록 */}
               <div className="mb-6">
                 <h3 className="text-lg text-blue-500 font-medium mb-2">배정된 현장</h3>
@@ -1228,23 +1427,26 @@ export default function WorkerAddPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-500 italic">배정된 현장이 없습니다.</p>
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                    <p className="text-blue-800 text-sm">
+                      현재 배정된 현장이 없습니다.
+                      <br />
+                      현장을 배정하지 않으면 기본 현장(본사 또는 첫 번째 현장)으로 자동 배정됩니다.
+                    </p>
+                  </div>
                 )}
               </div>
 
               {/* 새 현장 배정 폼 */}
               <div>
-                <h3 className="text-lg text-blue-500 font-medium mb-2">새 현장 배정</h3>
+                <h3 className="text-lg text-blue-500 font-medium mb-2">현장 배정</h3>
                 <div className="mb-4 dropdown-container relative">
                   <div
                     className="border border-gray-300 rounded-md cursor-pointer"
                     onClick={() => setSiteDropdownOpen(!siteDropdownOpen)}
                   >
                     <div className="w-full px-3 py-2 flex justify-between items-center">
-                      <span>
-                        {sites.find((s) => s.site_id === parseInt(formData.site_id))?.site_name ||
-                          "배정할 현장 선택"}
-                      </span>
+                      <span>현장을 선택하세요</span>
                       <span className="ml-2">▼</span>
                     </div>
                   </div>
@@ -1292,27 +1494,6 @@ export default function WorkerAddPage() {
                     </p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAssignSite}
-                  disabled={
-                    saveLoading ||
-                    !formData.site_id ||
-                    sites.length === 0 ||
-                    sites.length === workerSites.length ||
-                    workerSites.some((site) => site.site_id === parseInt(formData.site_id))
-                  }
-                  className="w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-black bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300 disabled:cursor-not-allowed"
-                >
-                  {saveLoading ? (
-                    <span className="flex items-center justify-center">
-                      <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      처리 중...
-                    </span>
-                  ) : (
-                    "현장 배정"
-                  )}
-                </button>
               </div>
             </div>
 
@@ -1818,26 +1999,7 @@ export default function WorkerAddPage() {
           </div>
         </div>
 
-        {/* 입력 데이터 디버그 표시 (개발용) */}
-        {/* {process.env.NODE_ENV === "development" && (
-          <div className="mt-8 p-4 bg-gray-100 rounded-md text-xs">
-            <h3 className="font-bold mb-2">디버그 정보 (개발 모드에서만 표시)</h3>
-            <pre className="whitespace-pre-wrap">
-              {JSON.stringify(
-                {
-                  ...formData,
-                  resident_number: formData.resident_number?.replace(/./g, "*"), // 민감 정보 마스킹
-                },
-                null,
-                2
-              )}
-            </pre>
-          </div>
-        )} */}
-
         {/* Floating Save Button */}
-        {/* Floating Save Button */}
-        {/* Floating Save Button - 가로바 없는 깔끔한 디자인 */}
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
           {/* 저장 상태 라벨 - 변경사항이 있을 때만 표시 */}
           {isDirty && (
@@ -1891,20 +2053,6 @@ export default function WorkerAddPage() {
                 <div className="animate-spin h-7 w-7 border-3 border-white border-t-transparent rounded-full"></div>
               ) : (
                 <>
-                  {/* <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6 mb-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg> */}
                   <Save size={28} strokeWidth={1.5} />
                   <span className="text-xs leading-none mt-0.5">저장</span>
                 </>
@@ -1923,772 +2071,3 @@ export default function WorkerAddPage() {
     </RoleGuard>
   );
 }
-
-// "use client";
-
-// import { useState, useEffect } from "react";
-// import { useRouter } from "next/navigation";
-// import { supabase } from "@/lib/supabase";
-// import RoleGuard from "@/components/RoleGuard";
-// import { useAuthStore } from "@/lib/store/authStore";
-// import useCodeStore from "@/lib/store/codeStore";
-// import { Search } from "lucide-react";
-
-// export default function WorkerAddPage() {
-//   const router = useRouter();
-//   const { user: currentUser } = useAuthStore();
-
-//   // Zustand 코드 스토어 사용
-//   const { codeMasters, isLoading: codeLoading, loadCodeTypeIfNeeded, getCodeInfo } = useCodeStore();
-
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState(null);
-//   const [sites, setSites] = useState([]);
-
-//   // 검색어 상태
-//   const [nationalitySearch, setNationalitySearch] = useState("");
-//   const [residenceStatusSearch, setResidenceStatusSearch] = useState("");
-//   const [jobCodeSearch, setJobCodeSearch] = useState("");
-
-//   // 드롭다운 열림 상태
-//   const [nationalityDropdownOpen, setNationalityDropdownOpen] = useState(false);
-//   const [residenceStatusDropdownOpen, setResidenceStatusDropdownOpen] = useState(false);
-//   const [jobCodeDropdownOpen, setJobCodeDropdownOpen] = useState(false);
-
-//   // 필터링된 코드 목록 계산
-//   const filteredNationalityCodes = codeMasters.NATIONALITY
-//     ? codeMasters.NATIONALITY.filter(
-//         (code) =>
-//           code.code_value.toLowerCase().includes(nationalitySearch.toLowerCase()) ||
-//           code.code_name.toLowerCase().includes(nationalitySearch.toLowerCase())
-//       )
-//     : [];
-
-//   const filteredResidenceStatusCodes = codeMasters.COMMON_RESIDENCE_STATUS
-//     ? codeMasters.COMMON_RESIDENCE_STATUS.filter(
-//         (code) =>
-//           code.code_value.toLowerCase().includes(residenceStatusSearch.toLowerCase()) ||
-//           code.code_name.toLowerCase().includes(residenceStatusSearch.toLowerCase())
-//       )
-//     : [];
-
-//   const filteredJobCodes = codeMasters.JOB_CODE
-//     ? codeMasters.JOB_CODE.filter(
-//         (code) =>
-//           code.code_value.toLowerCase().includes(jobCodeSearch.toLowerCase()) ||
-//           code.code_name.toLowerCase().includes(jobCodeSearch.toLowerCase())
-//       )
-//     : [];
-
-//   const [formData, setFormData] = useState({
-//     name: "",
-//     eng_name: "",
-//     resident_number: "",
-//     resident_number_formatted: "",
-//     nationality_code: "100", // 기본값 한국
-//     nationality_name: "한국", // 기본값 표시용
-//     residence_status_code: "",
-//     residence_status_name: "",
-//     job_code: "",
-//     job_name: "",
-//     address: "",
-//     contact_number: "",
-//     contact_number_formatted: "",
-//     representative_yn: false,
-//     worker_type: "daily", // 기본값 일용직
-//     site_id: "",
-//   });
-
-//   // 페이지 로드 시 코드 마스터 및 현장 데이터 로드
-//   useEffect(() => {
-//     const initializeData = async () => {
-//       // 코드 마스터 데이터 로드
-//       await Promise.all([
-//         loadCodeTypeIfNeeded("NATIONALITY"),
-//         loadCodeTypeIfNeeded("COMMON_RESIDENCE_STATUS"),
-//         loadCodeTypeIfNeeded("JOB_CODE"),
-//       ]);
-
-//       // 현장 데이터 로드
-//       loadSites();
-//     };
-
-//     if (currentUser?.id) {
-//       initializeData();
-//     }
-//   }, [currentUser, loadCodeTypeIfNeeded]);
-
-//   // 코드 마스터 데이터가 로드되면 한국 국적 기본값 설정
-//   useEffect(() => {
-//     if (codeMasters.NATIONALITY?.length > 0) {
-//       const koreaCode = codeMasters.NATIONALITY.find((code) => code.code_value === "100");
-//       if (koreaCode) {
-//         setFormData((prev) => ({
-//           ...prev,
-//           nationality_code: koreaCode.code_value,
-//           nationality_name: koreaCode.code_name,
-//         }));
-//       }
-//     }
-//   }, [codeMasters.NATIONALITY]);
-
-//   // 현장 데이터 로드 함수
-//   const loadSites = async () => {
-//     try {
-//       if (!currentUser?.id) return;
-
-//       let sitesQuery;
-
-//       // admin은 회사 내 모든 현장 조회
-//       if (currentUser.role === "admin") {
-//         // 회사 ID 조회
-//         const { data: companyData, error: companyError } = await supabase
-//           .from("user_companies")
-//           .select("company_id")
-//           .eq("user_id", currentUser.id)
-//           .maybeSingle();
-
-//         if (companyError) throw companyError;
-
-//         if (companyData?.company_id) {
-//           sitesQuery = supabase
-//             .from("construction_sites")
-//             .select("*")
-//             .eq("company_id", companyData.company_id)
-//             .eq("status", "active")
-//             .order("site_name", { ascending: true });
-//         }
-//       } else {
-//         // manager, site_manager는 배정된 현장만 조회
-//         sitesQuery = supabase
-//           .from("user_construction_sites")
-//           .select(
-//             `
-//             site_id,
-//             construction_site:construction_sites(*)
-//           `
-//           )
-//           .eq("user_id", currentUser.id)
-//           .is("removed_date", null)
-//           .eq("construction_site.status", "active");
-//       }
-
-//       if (sitesQuery) {
-//         const { data: sitesData, error: sitesError } = await sitesQuery;
-
-//         if (sitesError) throw sitesError;
-
-//         // 데이터 가공
-//         let formattedSites;
-//         if (currentUser.role === "admin") {
-//           formattedSites = sitesData || [];
-//         } else {
-//           formattedSites = (sitesData || []).map((item) => item.construction_site);
-//         }
-
-//         setSites(formattedSites);
-
-//         // 선택 가능한 현장이 하나뿐이면 자동 선택
-//         if (formattedSites.length === 1) {
-//           setFormData((prev) => ({
-//             ...prev,
-//             site_id: formattedSites[0].site_id,
-//           }));
-//         }
-//       }
-//     } catch (error) {
-//       console.error("현장 데이터 로드 오류:", error);
-//       setError("현장 정보를 불러오는 중 오류가 발생했습니다.");
-//     }
-//   };
-
-//   // 입력 필드 변경 핸들러
-//   const handleChange = (e) => {
-//     const { name, value, type, checked } = e.target;
-
-//     // 체크박스의 경우 checked 값 사용, 그 외에는 value 사용
-//     const newValue = type === "checkbox" ? checked : value;
-
-//     if (name === "resident_number_formatted") {
-//       // 주민번호 형식화 (000000-0000000)
-//       let formatted = value.replace(/[^0-9]/g, ""); // 숫자만 남기기
-
-//       if (formatted.length > 6) {
-//         formatted = formatted.slice(0, 6) + "-" + formatted.slice(6, 13);
-//       }
-
-//       // 최대 14자리 (하이픈 포함)로 제한
-//       formatted = formatted.slice(0, 14);
-
-//       // 원본 값 (하이픈 제거)과 형식화된 값 모두 저장
-//       setFormData((prev) => ({
-//         ...prev,
-//         resident_number: formatted.replace(/-/g, ""),
-//         resident_number_formatted: formatted,
-//       }));
-//       return;
-//     }
-
-//     if (name === "contact_number_formatted") {
-//       // 전화번호 형식화 (010-0000-0000)
-//       let formatted = value.replace(/[^0-9]/g, ""); // 숫자만 남기기
-
-//       if (formatted.length > 3 && formatted.length <= 7) {
-//         formatted = formatted.slice(0, 3) + "-" + formatted.slice(3);
-//       } else if (formatted.length > 7) {
-//         formatted =
-//           formatted.slice(0, 3) + "-" + formatted.slice(3, 7) + "-" + formatted.slice(7, 11);
-//       }
-
-//       // 최대 13자리 (하이픈 포함)로 제한
-//       formatted = formatted.slice(0, 13);
-
-//       // 원본 값 (하이픈 제거)과 형식화된 값 모두 저장
-//       setFormData((prev) => ({
-//         ...prev,
-//         contact_number: formatted.replace(/-/g, ""),
-//         contact_number_formatted: formatted,
-//       }));
-//       return;
-//     }
-
-//     setFormData((prev) => ({
-//       ...prev,
-//       [name]: newValue,
-//     }));
-//   };
-
-//   // 국적 선택 핸들러
-//   const handleNationalitySelect = (code) => {
-//     setFormData((prev) => ({
-//       ...prev,
-//       nationality_code: code.code_value,
-//       nationality_name: code.code_name,
-//       // 한국 국적인 경우 체류자격 초기화
-//       ...(code.code_value === "100"
-//         ? {
-//             residence_status_code: "",
-//             residence_status_name: "",
-//           }
-//         : {}),
-//     }));
-//     setNationalityDropdownOpen(false);
-//     setNationalitySearch("");
-//   };
-
-//   // 체류자격 선택 핸들러
-//   const handleResidenceStatusSelect = (code) => {
-//     setFormData((prev) => ({
-//       ...prev,
-//       residence_status_code: code.code_value,
-//       residence_status_name: code.code_name,
-//     }));
-//     setResidenceStatusDropdownOpen(false);
-//     setResidenceStatusSearch("");
-//   };
-
-//   // 직종 선택 핸들러
-//   const handleJobCodeSelect = (code) => {
-//     setFormData((prev) => ({
-//       ...prev,
-//       job_code: code.code_value,
-//       job_name: code.code_name,
-//     }));
-//     setJobCodeDropdownOpen(false);
-//     setJobCodeSearch("");
-//   };
-
-//   // 폼 제출 핸들러
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-
-//     try {
-//       setLoading(true);
-//       setError(null);
-
-//       // 필수 입력값 확인
-//       if (
-//         !formData.name ||
-//         !formData.resident_number ||
-//         !formData.contact_number ||
-//         !formData.address ||
-//         !formData.site_id
-//       ) {
-//         setError("필수 입력 항목을 모두 입력해주세요.");
-//         return;
-//       }
-
-//       // 주민등록번호 형식 검증 (숫자 13자리)
-//       const residentNumberRegex = /^\d{13}$/;
-//       if (!residentNumberRegex.test(formData.resident_number)) {
-//         setError("주민등록번호는 하이픈(-) 없이 13자리 숫자로 입력해주세요.");
-//         return;
-//       }
-
-//       // 외국인이면 체류자격 필수
-//       if (formData.nationality_code !== "100" && !formData.residence_status_code) {
-//         setError("외국인의 경우 체류자격을 선택해주세요.");
-//         return;
-//       }
-
-//       // 1. 근로자 정보 등록
-//       const { data: worker, error: workerError } = await supabase
-//         .from("workers")
-//         .insert({
-//           name: formData.name,
-//           eng_name: formData.eng_name || null,
-//           resident_number: formData.resident_number,
-//           nationality_code: formData.nationality_code,
-//           residence_status_code: formData.residence_status_code || null,
-//           job_code: formData.job_code || null,
-//           address: formData.address,
-//           contact_number: formData.contact_number,
-//           representative_yn: formData.representative_yn,
-//           worker_type: formData.worker_type,
-//         })
-//         .select()
-//         .single();
-
-//       if (workerError) {
-//         if (workerError.code === "23505") {
-//           // 중복 키 오류 (PostgreSQL)
-//           throw new Error("이미 등록된 주민등록번호입니다.");
-//         }
-//         throw workerError;
-//       }
-
-//       // 2. 현장-근로자 연결 (work_records에 초기 레코드 생성)
-//       const todayDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD 형식
-
-//       const { error: recordError } = await supabase.from("work_records").insert({
-//         worker_id: worker.worker_id,
-//         site_id: formData.site_id,
-//         work_date: todayDate,
-//         work_hours: 0, // 초기값
-//         work_type: "registration", // 특수 타입: 등록용
-//         daily_wage: 0, // 초기값
-//         status: "registration", // 특수 상태: 등록용
-//       });
-
-//       if (recordError) throw recordError;
-
-//       // 성공 시 근로자 목록 페이지로 이동
-//       router.push("/dashboard/workers");
-//     } catch (error) {
-//       console.error("근로자 등록 오류:", error);
-//       setError(error.message || "근로자 등록 중 오류가 발생했습니다.");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // 드롭다운 외부 클릭 핸들러
-//   useEffect(() => {
-//     const handleClickOutside = (event) => {
-//       if (nationalityDropdownOpen || residenceStatusDropdownOpen || jobCodeDropdownOpen) {
-//         if (!event.target.closest(".dropdown-container")) {
-//           setNationalityDropdownOpen(false);
-//           setResidenceStatusDropdownOpen(false);
-//           setJobCodeDropdownOpen(false);
-//         }
-//       }
-//     };
-
-//     document.addEventListener("mousedown", handleClickOutside);
-//     return () => {
-//       document.removeEventListener("mousedown", handleClickOutside);
-//     };
-//   }, [nationalityDropdownOpen, residenceStatusDropdownOpen, jobCodeDropdownOpen]);
-
-//   return (
-//     <RoleGuard requiredPermission="VIEW_WORKERS">
-//       <div className="container mx-auto px-4 py-8">
-//         <div className="flex justify-between items-center mb-6">
-//           <h1 className="text-2xl font-bold">근로자 추가</h1>
-//           <button
-//             onClick={() => router.back()}
-//             className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-//           >
-//             뒤로 가기
-//           </button>
-//         </div>
-
-//         {error && (
-//           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-//             {error}
-//           </div>
-//         )}
-
-//         {/* 코드 데이터 로딩 중 표시 */}
-//         {codeLoading && (
-//           <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4">
-//             코드 데이터를 불러오는 중입니다...
-//           </div>
-//         )}
-
-//         <div className="bg-white shadow rounded-lg p-6">
-//           <form onSubmit={handleSubmit}>
-//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-//               {/* 이름 */}
-//               <div>
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   이름 <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="text"
-//                   name="name"
-//                   value={formData.name}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                   required
-//                 />
-//               </div>
-
-//               {/* 영문 이름 */}
-//               <div>
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">영문 이름</label>
-//                 <input
-//                   type="text"
-//                   name="eng_name"
-//                   value={formData.eng_name}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                 />
-//                 <p className="text-xs text-gray-500 mt-1">외국인의 경우 필수</p>
-//               </div>
-
-//               {/* 주민등록번호 */}
-//               <div>
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   주민등록번호/외국인등록번호 <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="text"
-//                   name="resident_number_formatted"
-//                   value={formData.resident_number_formatted}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                   placeholder="000000-0000000"
-//                   maxLength={14}
-//                   required
-//                 />
-//                 <p className="text-xs text-gray-500 mt-1">
-//                   주민번호는 자동으로 하이픈이 입력됩니다.
-//                 </p>
-//               </div>
-
-//               {/* 국적코드 */}
-//               <div className="dropdown-container relative">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   국적 <span className="text-red-500">*</span>
-//                 </label>
-//                 <div
-//                   className="border border-gray-300 rounded-md cursor-pointer"
-//                   onClick={() => setNationalityDropdownOpen(!nationalityDropdownOpen)}
-//                 >
-//                   <div className="w-full px-3 py-2 flex justify-between items-center">
-//                     <span>{formData.nationality_name || "선택하세요"}</span>
-//                     <span className="ml-2">▼</span>
-//                   </div>
-//                 </div>
-
-//                 {nationalityDropdownOpen && (
-//                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-//                     <div className="sticky top-0 bg-white border-b border-gray-200 p-2">
-//                       <div className="relative">
-//                         <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-//                         <input
-//                           type="text"
-//                           className="w-full pl-8 pr-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                           placeholder="검색..."
-//                           value={nationalitySearch}
-//                           onChange={(e) => setNationalitySearch(e.target.value)}
-//                           onClick={(e) => e.stopPropagation()}
-//                         />
-//                       </div>
-//                     </div>
-//                     <div>
-//                       {filteredNationalityCodes.length > 0 ? (
-//                         filteredNationalityCodes.map((code) => (
-//                           <div
-//                             key={code.code_value}
-//                             className={`px-3 py-2 hover:bg-gray-100 cursor-pointer ${
-//                               formData.nationality_code === code.code_value ? "bg-blue-50" : ""
-//                             }`}
-//                             onClick={() => handleNationalitySelect(code)}
-//                           >
-//                             <span className="font-medium mr-2">{code.code_name}</span>
-//                             <span className="text-xs text-gray-500">({code.code_value})</span>
-//                           </div>
-//                         ))
-//                       ) : (
-//                         <div className="px-3 py-2 text-gray-500">검색 결과가 없습니다</div>
-//                       )}
-//                     </div>
-//                   </div>
-//                 )}
-//               </div>
-
-//               {/* 체류자격코드 (외국인인 경우) */}
-//               <div className="dropdown-container relative">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   체류자격{" "}
-//                   {formData.nationality_code !== "100" && <span className="text-red-500">*</span>}
-//                 </label>
-//                 <div
-//                   className={`border border-gray-300 rounded-md ${
-//                     formData.nationality_code !== "100"
-//                       ? "cursor-pointer"
-//                       : "bg-gray-100 cursor-not-allowed"
-//                   }`}
-//                   onClick={() =>
-//                     formData.nationality_code !== "100" &&
-//                     setResidenceStatusDropdownOpen(!residenceStatusDropdownOpen)
-//                   }
-//                 >
-//                   <div className="w-full px-3 py-2 flex justify-between items-center">
-//                     <span className={formData.nationality_code === "100" ? "text-gray-500" : ""}>
-//                       {formData.nationality_code === "100"
-//                         ? "해당 없음"
-//                         : formData.residence_status_name || "선택하세요"}
-//                     </span>
-//                     {formData.nationality_code !== "100" && <span className="ml-2">▼</span>}
-//                   </div>
-//                 </div>
-
-//                 {residenceStatusDropdownOpen && formData.nationality_code !== "100" && (
-//                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-//                     <div className="sticky top-0 bg-white border-b border-gray-200 p-2">
-//                       <div className="relative">
-//                         <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-//                         <input
-//                           type="text"
-//                           className="w-full pl-8 pr-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                           placeholder="검색..."
-//                           value={residenceStatusSearch}
-//                           onChange={(e) => setResidenceStatusSearch(e.target.value)}
-//                           onClick={(e) => e.stopPropagation()}
-//                         />
-//                       </div>
-//                     </div>
-//                     <div>
-//                       {filteredResidenceStatusCodes.length > 0 ? (
-//                         filteredResidenceStatusCodes.map((code) => (
-//                           <div
-//                             key={code.code_value}
-//                             className={`px-3 py-2 hover:bg-gray-100 cursor-pointer ${
-//                               formData.residence_status_code === code.code_value ? "bg-blue-50" : ""
-//                             }`}
-//                             onClick={() => handleResidenceStatusSelect(code)}
-//                           >
-//                             <span className="font-medium mr-2">{code.code_name}</span>
-//                             <span className="text-xs text-gray-500">({code.code_value})</span>
-//                           </div>
-//                         ))
-//                       ) : (
-//                         <div className="px-3 py-2 text-gray-500">검색 결과가 없습니다</div>
-//                       )}
-//                     </div>
-//                   </div>
-//                 )}
-
-//                 {formData.nationality_code !== "100" && (
-//                   <p className="text-xs text-gray-500 mt-1">외국인의 경우 필수 선택</p>
-//                 )}
-//               </div>
-
-//               {/* 직종코드 */}
-//               <div className="dropdown-container relative">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">직종</label>
-//                 <div
-//                   className="border border-gray-300 rounded-md cursor-pointer"
-//                   onClick={() => setJobCodeDropdownOpen(!jobCodeDropdownOpen)}
-//                 >
-//                   <div className="w-full px-3 py-2 flex justify-between items-center">
-//                     <span>{formData.job_name || "선택하세요"}</span>
-//                     <span className="ml-2">▼</span>
-//                   </div>
-//                 </div>
-
-//                 {jobCodeDropdownOpen && (
-//                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-//                     <div className="sticky top-0 bg-white border-b border-gray-200 p-2">
-//                       <div className="relative">
-//                         <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-//                         <input
-//                           type="text"
-//                           className="w-full pl-8 pr-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                           placeholder="검색..."
-//                           value={jobCodeSearch}
-//                           onChange={(e) => setJobCodeSearch(e.target.value)}
-//                           onClick={(e) => e.stopPropagation()}
-//                         />
-//                       </div>
-//                     </div>
-//                     <div>
-//                       {filteredJobCodes.length > 0 ? (
-//                         filteredJobCodes.map((code) => (
-//                           <div
-//                             key={code.code_value}
-//                             className={`px-3 py-2 hover:bg-gray-100 cursor-pointer ${
-//                               formData.job_code === code.code_value ? "bg-blue-50" : ""
-//                             }`}
-//                             onClick={() => handleJobCodeSelect(code)}
-//                           >
-//                             <span className="font-medium mr-2">{code.code_name}</span>
-//                             <span className="text-xs text-gray-500">({code.code_value})</span>
-//                           </div>
-//                         ))
-//                       ) : (
-//                         <div className="px-3 py-2 text-gray-500">검색 결과가 없습니다</div>
-//                       )}
-//                     </div>
-//                   </div>
-//                 )}
-//               </div>
-
-//               {/* 연락처 */}
-//               <div>
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   연락처 <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="tel"
-//                   name="contact_number_formatted"
-//                   value={formData.contact_number_formatted}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                   placeholder="010-0000-0000"
-//                   required
-//                 />
-//                 <p className="text-xs text-gray-500 mt-1">
-//                   전화번호는 자동으로 하이픈이 입력됩니다.
-//                 </p>
-//               </div>
-
-//               {/* 주소 */}
-//               <div className="md:col-span-2">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   주소 <span className="text-red-500">*</span>
-//                 </label>
-//                 <input
-//                   type="text"
-//                   name="address"
-//                   value={formData.address}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                   required
-//                 />
-//               </div>
-
-//               {/* 근로자 유형 */}
-//               <div>
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   근로자 유형 <span className="text-red-500">*</span>
-//                 </label>
-//                 <div className="flex space-x-4 mt-1">
-//                   <label className="inline-flex items-center">
-//                     <input
-//                       type="radio"
-//                       name="worker_type"
-//                       value="daily"
-//                       checked={formData.worker_type === "daily"}
-//                       onChange={handleChange}
-//                       className="form-radio h-4 w-4 text-blue-600"
-//                     />
-//                     <span className="ml-2">일용직</span>
-//                   </label>
-//                   <label className="inline-flex items-center">
-//                     <input
-//                       type="radio"
-//                       name="worker_type"
-//                       value="regular"
-//                       checked={formData.worker_type === "regular"}
-//                       onChange={handleChange}
-//                       className="form-radio h-4 w-4 text-blue-600"
-//                     />
-//                     <span className="ml-2">상용직</span>
-//                   </label>
-//                 </div>
-//               </div>
-
-//               {/* 대표자 여부 */}
-//               <div className="flex items-center">
-//                 <label className="inline-flex items-center cursor-pointer">
-//                   <input
-//                     type="checkbox"
-//                     name="representative_yn"
-//                     checked={formData.representative_yn}
-//                     onChange={handleChange}
-//                     className="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
-//                   />
-//                   <span className="ml-2 text-sm font-medium text-gray-700">대표자 여부</span>
-//                 </label>
-//               </div>
-
-//               {/* 배정 현장 */}
-//               <div className="md:col-span-2">
-//                 <label className="block text-sm font-medium text-gray-700 mb-1">
-//                   배정 현장 <span className="text-red-500">*</span>
-//                 </label>
-//                 <select
-//                   name="site_id"
-//                   value={formData.site_id}
-//                   onChange={handleChange}
-//                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-//                   required
-//                 >
-//                   <option value="">현장을 선택하세요</option>
-//                   {sites.map((site) => (
-//                     <option key={site.site_id} value={site.site_id}>
-//                       {site.site_name}
-//                     </option>
-//                   ))}
-//                 </select>
-//                 {sites.length === 0 && (
-//                   <p className="text-sm text-red-500 mt-1">
-//                     배정된 현장이 없습니다. 현장 담당자에게 문의하세요.
-//                   </p>
-//                 )}
-//               </div>
-//             </div>
-
-//             <div className="flex justify-end space-x-4 mt-6">
-//               <button
-//                 type="button"
-//                 onClick={() => router.push("/dashboard/workers")}
-//                 className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-//               >
-//                 취소
-//               </button>
-//               <button
-//                 type="submit"
-//                 disabled={loading}
-//                 className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
-//               >
-//                 {loading ? "처리 중..." : "저장"}
-//               </button>
-//             </div>
-
-//             {/* 입력 데이터 디버그 표시 (개발용) */}
-//             {process.env.NODE_ENV === "development" && (
-//               <div className="mt-8 p-4 bg-gray-100 rounded-md text-xs">
-//                 <h3 className="font-bold mb-2">디버그 정보 (개발 모드에서만 표시)</h3>
-//                 <pre className="whitespace-pre-wrap">
-//                   {JSON.stringify(
-//                     {
-//                       ...formData,
-//                       residentNumber: formData.resident_number?.replace(/./g, "*"), // 민감 정보 마스킹
-//                     },
-//                     null,
-//                     2
-//                   )}
-//                 </pre>
-//               </div>
-//             )}
-//           </form>
-//         </div>
-//       </div>
-//     </RoleGuard>
-//   );
-// }

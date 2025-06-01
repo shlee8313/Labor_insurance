@@ -1,9 +1,9 @@
 //file: app\dashboard\reports\dailyWorkerGongdan\page.js
-//일용노무비지급명세서
 "use client";
 
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/lib/store/authStore";
+import useSiteStore from "@/lib/store/siteStore"; // ✅ siteStore 추가
 import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
@@ -20,16 +20,22 @@ import { getCachedSystemSettings } from "@/lib/utils/systemSettings";
 function DailyWorkerGongdanPage() {
   // 기존 상태 변수들...
   const { user } = useAuthStore();
+
+  // ✅ siteStore 사용 (sites만 가져오고 selectedSite는 로컬 상태로 관리)
+  const { sites, companyName, initialize } = useSiteStore();
+
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedSite, setSelectedSite] = useState("");
+  // ✅ 로컬 상태로 현장 선택 관리 (일관성 유지)
+  const [selectedSite, setSelectedSite] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState(
     (new Date().getMonth() + 1).toString().padStart(2, "0")
   );
-  const [sites, setSites] = useState([]);
+
+  // ✅ sites와 companyName은 siteStore에서 가져오므로 로컬 상태 제거
   const [workers, setWorkers] = useState([]);
   const [workRecords, setWorkRecords] = useState({});
-  const [companyName, setCompanyName] = useState("");
+
   // 디버깅 관련 상태 추가
   const [showTaxCalculation, setShowTaxCalculation] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
@@ -45,6 +51,7 @@ function DailyWorkerGongdanPage() {
   const handleMouseLeave = () => {
     setHoveredWorkerId(null);
   };
+
   // 날짜 생성
   const getDaysInMonth = (year, month) => {
     return new Date(year, month, 0).getDate();
@@ -53,13 +60,38 @@ function DailyWorkerGongdanPage() {
   const daysInMonth = getDaysInMonth(parseInt(selectedYear), parseInt(selectedMonth));
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  // 초기 데이터 로드
+  // ✅ siteStore 초기화 및 세율 정보 로드
   useEffect(() => {
     if (user) {
-      loadSites();
+      loadInitialData();
       loadTaxRates();
     }
   }, [user]);
+
+  // ✅ siteStore 초기화 함수
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+      console.log("현장 정보 로드 시작");
+
+      // siteStore 초기화 (사용자 역할에 따른 현장 조회)
+      await initialize(user.id);
+      console.log("현장 정보 로드 완료:", sites);
+    } catch (error) {
+      console.error("초기 데이터 로드 오류:", error);
+      toast.error("현장 정보를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ sites가 로드되면 첫 번째 현장 자동 선택
+  // useEffect(() => {
+  //   if (sites && sites.length > 0 && !selectedSite) {
+  //     setSelectedSite(sites[0].site_id);
+  //     console.log("첫 번째 현장 자동 선택:", sites[0].site_id);
+  //   }
+  // }, [sites, selectedSite]);
 
   // 세율 정보 로드
   const loadTaxRates = async () => {
@@ -93,50 +125,8 @@ function DailyWorkerGongdanPage() {
     console.log("현재 세율 정보:", taxRates);
   }, [workers, workRecords, taxRates]);
 
-  // 현장 데이터 로드
-  const loadSites = async () => {
-    try {
-      setIsLoading(true);
+  // ✅ loadSites 함수 제거 (siteStore에서 처리)
 
-      // 사용자의 회사 ID와 회사 이름 가져오기
-      const { data: userCompany } = await supabase
-        .from("user_companies")
-        .select("company_id, company:companies(company_name)")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (!userCompany?.company_id) {
-        toast.error("회사 정보를 찾을 수 없습니다.");
-        return;
-      }
-
-      // 회사 이름 상태 설정
-      if (userCompany.company) {
-        setCompanyName(userCompany.company.company_name);
-      }
-
-      // 회사의 공사현장 가져오기
-      const { data, error } = await supabase
-        .from("construction_sites")
-        .select("site_id, site_name")
-        .eq("company_id", userCompany.company_id)
-        .order("site_name");
-
-      if (error) throw error;
-
-      setSites(data || []);
-      if (data?.length > 0) {
-        setSelectedSite(data[0].site_id);
-      }
-    } catch (error) {
-      console.error("현장 데이터 로드 오류:", error);
-      toast.error("현장 정보를 불러오는 중 오류가 발생했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 근로자 데이터 로드
   // 근로자 데이터 로드
   const loadWorkers = async () => {
     if (!selectedSite) return;
@@ -341,7 +331,7 @@ function DailyWorkerGongdanPage() {
 
   return (
     <RoleGuard requiredPermission="VIEW_DAILY_REPORTS">
-      <div className="space-y-4 print:m-0 print:p-0">
+      <div className="space-y-1 print:m-0 print:p-0">
         {isLoading && (
           <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50 print:hidden">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
@@ -350,53 +340,74 @@ function DailyWorkerGongdanPage() {
         )}
 
         {/* 헤더 부분 */}
-        <div className="flex items-center justify-end gap-2 mb-4 print:hidden">
-          <select
-            className="px-3 py-2 border border-gray-300 rounded bg-white"
-            value={selectedSite}
-            onChange={(e) => setSelectedSite(e.target.value)}
-          >
-            <option value="">공사현장 선택</option>
-            {sites.map((site) => (
-              <option key={site.site_id} value={site.site_id}>
-                {site.site_name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="month"
-            className="px-3 py-2 border rounded bg-white"
-            value={`${selectedYear}-${selectedMonth}`}
-            onChange={(e) => {
-              const [year, month] = e.target.value.split("-");
-              setSelectedYear(year);
-              setSelectedMonth(month);
-              // 날짜 변경 시 세율 정보도 다시 로드
-              loadTaxRates();
-            }}
-          />
-
-          <button
-            className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            onClick={handlePrint}
-          >
-            출력하기
-          </button>
-
-          <button
-            className="px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            onClick={handleExport}
-          >
-            파일생성
-          </button>
+        <div className="flex flex-col lg:flex-row justify-between  px-6">
+          <div className="flex  gap-12 ">
+            <h1 className="text-2xl font-bold text-gray-600 pl-6 ">일용노무비지급명세서</h1>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* 현장 선택 */}
+              <div className="flex flex-col">
+                <label htmlFor="site-select" className="block text-xs font-medium text-gray-700">
+                  현장 선택:
+                </label>
+                <select
+                  className="px-3 py-1 border border-blue-500 rounded bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedSite || ""}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                >
+                  <option value="" disabled>
+                    공사현장 선택
+                  </option>
+                  {/* ✅ siteStore에서 가져온 sites 사용 */}
+                  {sites.map((site) => (
+                    <option key={site.site_id} value={site.site_id}>
+                      {site.site_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* 조회 년월 */}
+              <div>
+                <label htmlFor="year-month" className="block text-xs font-medium text-gray-700">
+                  조회 년월:
+                </label>
+                <input
+                  type="month"
+                  className="px-3 border text-sm border-blue-500 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={`${selectedYear}-${selectedMonth}`}
+                  onChange={(e) => {
+                    const [year, month] = e.target.value.split("-");
+                    setSelectedYear(year);
+                    setSelectedMonth(month);
+                    // 날짜 변경 시 세율 정보도 다시 로드
+                    loadTaxRates();
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          {/* 우측 버튼들 */}
+          <div className="flex items-center space-x-2">
+            <button
+              className="h-10 px-4 bg-gray-500 text-white rounded-md hover:bg-blue-500"
+              onClick={handlePrint}
+            >
+              출력하기
+            </button>
+            <button
+              className="h-10 px-4 bg-gray-500 text-white rounded-md hover:bg-blue-500"
+              onClick={handleExport}
+            >
+              파일생성
+            </button>
+          </div>
         </div>
 
         {/* 상단 기본 정보 테이블 */}
-        <table className="w-full border-collapse border border-gray-300">
+        {/* <table className="w-full border-collapse border border-gray-300">
           <tbody>
             <tr>
               <th className="border border-gray-300 p-2 text-left font-medium">상호명</th>
+            
               <td className="border border-gray-300 p-2">{companyName || "(주)회사명"}</td>
               <td colSpan={9} className="border border-gray-300 p-2 text-center text-xl font-bold">
                 일용노무비지급명세서
@@ -412,18 +423,22 @@ function DailyWorkerGongdanPage() {
               </td>
               <th className="border border-gray-300 p-2 text-left font-medium">현장명</th>
               <td className="border border-gray-300 p-2">
+                
                 {sites.find((s) => s.site_id === selectedSite)?.site_name || "현장명"}
               </td>
             </tr>
           </tbody>
-        </table>
+        </table> */}
+
+        {/* 나머지 코드는 동일... */}
         {/* 상상단 색상 표시 */}
-        <div className=" h-1 pb-3 ">
+        <div className=" h-1/4 ">
           <div className="bg-green-500 w-1/4 h-1 inline-block"></div>
           <div className="bg-blue-500 w-1/4 h-1 inline-block"></div>
           <div className="bg-yellow-500 w-1/4 h-1 inline-block "></div>
           <div className="bg-red-500 w-1/4 h-1 inline-block "></div>
         </div>
+
         {/* 메인 급여 테이블 */}
         <table className="w-full border-collapse text-xs">
           <thead className="bg-gray-200">
@@ -489,13 +504,13 @@ function DailyWorkerGongdanPage() {
                 주민세
               </th>
               <th rowSpan={2} className="border border-gray-400 p-1 text-center">
-                고용보험
+                국민연금
               </th>
               <th rowSpan={2} className="border border-gray-400 p-1 text-center">
                 건강보험
               </th>
               <th rowSpan={2} className="border border-gray-400 p-1 text-center">
-                국민연금
+                고용보험
               </th>
             </tr>
             <tr>
@@ -647,14 +662,14 @@ function DailyWorkerGongdanPage() {
                         {formatNumber(totals.localTax)}
                       </td>
 
-                      {/* 고용보험 */}
+                      {/* 국민연금 */}
                       <td
                         rowSpan={2}
                         className={`border border-gray-300 p-1 text-center ${highlightClass}`}
                         onMouseEnter={() => handleMouseEnter(worker.worker_id)}
                         onMouseLeave={handleMouseLeave}
                       >
-                        {formatNumber(totals.employmentInsurance)}
+                        {formatNumber(totals.nationalPension)}
                       </td>
 
                       {/* 건강보험 */}
@@ -666,15 +681,14 @@ function DailyWorkerGongdanPage() {
                       >
                         {formatNumber(totals.healthInsurance)}
                       </td>
-
-                      {/* 국민연금 */}
+                      {/* 고용보험 */}
                       <td
                         rowSpan={2}
                         className={`border border-gray-300 p-1 text-center ${highlightClass}`}
                         onMouseEnter={() => handleMouseEnter(worker.worker_id)}
                         onMouseLeave={handleMouseLeave}
                       >
-                        {formatNumber(totals.nationalPension)}
+                        {formatNumber(totals.employmentInsurance)}
                       </td>
 
                       {/* 차감지급액 */}
@@ -735,12 +749,6 @@ function DailyWorkerGongdanPage() {
             )}
           </tbody>
         </table>
-        {/* 하단 색상 표시 */}
-        {/* <div className="mt-2 h-1 print:mt-8">
-          <div className="bg-green-500 w-24 h-1 inline-block"></div>
-          <div className="bg-blue-500 w-72 h-1 inline-block"></div>
-          <div className="bg-red-500 w-48 h-1 inline-block float-right"></div>
-        </div> */}
 
         {/* 하단 주석 영역 */}
         <div className="mt-2 text-xs print:mt-4">

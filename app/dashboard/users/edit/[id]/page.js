@@ -24,7 +24,7 @@ export default function EditUserPage({ params }) {
 
   const router = useRouter();
   const [companies, setCompanies] = useState([]);
-  const [constructionSites, setConstructionSites] = useState([]);
+  const [locationSites, setlocationSites] = useState([]);
   const [selectedSites, setSelectedSites] = useState([]);
   const [formData, setFormData] = useState({
     username: "",
@@ -90,11 +90,11 @@ export default function EditUserPage({ params }) {
             }));
 
             // 회사 정보가 있으면 해당 회사의 공사현장 목록 조회
-            await fetchConstructionSites(userCompanyData.company_id);
+            await fetchlocationSites(userCompanyData.company_id);
 
             // 사용자-현장 연결 정보 조회
             const { data: userSitesData, error: userSitesError } = await supabase
-              .from("user_construction_sites")
+              .from("user_location_sites")
               .select("site_id")
               .eq("user_id", userId)
               .is("removed_date", null);
@@ -118,16 +118,16 @@ export default function EditUserPage({ params }) {
     }
   }, [userId]);
 
-  const fetchConstructionSites = async (companyId) => {
+  const fetchlocationSites = async (companyId) => {
     try {
       const { data, error } = await supabase
-        .from("construction_sites")
+        .from("location_sites")
         .select("site_id, site_name")
         .eq("company_id", companyId)
         .order("site_name");
 
       if (error) throw error;
-      setConstructionSites(data || []);
+      setlocationSites(data || []);
     } catch (error) {
       console.error("공사현장 목록 조회 오류:", error);
       setError("공사현장 목록을 불러오는 중 오류가 발생했습니다.");
@@ -143,7 +143,7 @@ export default function EditUserPage({ params }) {
 
     // 회사가 변경되면 공사현장 목록도 업데이트
     if (name === "company_id" && value) {
-      fetchConstructionSites(value);
+      fetchlocationSites(value);
       // 회사가 변경되면 선택된 공사현장 초기화
       setSelectedSites([]);
     }
@@ -160,12 +160,12 @@ export default function EditUserPage({ params }) {
   };
 
   const handleSelectAllSites = () => {
-    if (selectedSites.length === constructionSites.length) {
+    if (selectedSites.length === locationSites.length) {
       // 모든 현장이 이미 선택되어 있다면 모두 선택 해제
       setSelectedSites([]);
     } else {
       // 그렇지 않다면 모든 현장 선택
-      setSelectedSites(constructionSites.map((site) => site.site_id));
+      setSelectedSites(locationSites.map((site) => site.site_id));
     }
   };
 
@@ -230,7 +230,7 @@ export default function EditUserPage({ params }) {
         if (selectedSites.length > 0) {
           // 기존 현장 배정 조회
           const { data: existingSites, error: sitesQueryError } = await supabase
-            .from("user_construction_sites")
+            .from("user_location_sites")
             .select("site_id")
             .eq("user_id", userId)
             .is("removed_date", null);
@@ -248,7 +248,7 @@ export default function EditUserPage({ params }) {
           // 삭제 처리 (removed_date 설정)
           if (sitesToRemove.length > 0) {
             const { error: removeError } = await supabase
-              .from("user_construction_sites")
+              .from("user_location_sites")
               .update({ removed_date: new Date().toISOString().split("T")[0] })
               .eq("user_id", userId)
               .in("site_id", sitesToRemove);
@@ -265,7 +265,7 @@ export default function EditUserPage({ params }) {
             }));
 
             const { error: addError } = await supabase
-              .from("user_construction_sites")
+              .from("user_location_sites")
               .insert(newSiteEntries);
 
             if (addError) throw addError;
@@ -273,7 +273,7 @@ export default function EditUserPage({ params }) {
         } else {
           // 모든 현장 배정 제거
           const { error: removeAllError } = await supabase
-            .from("user_construction_sites")
+            .from("user_location_sites")
             .update({ removed_date: new Date().toISOString().split("T")[0] })
             .eq("user_id", userId)
             .is("removed_date", null);
@@ -291,7 +291,7 @@ export default function EditUserPage({ params }) {
 
         // 모든 현장 배정 제거
         const { error: removeAllSitesError } = await supabase
-          .from("user_construction_sites")
+          .from("user_location_sites")
           .update({ removed_date: new Date().toISOString().split("T")[0] })
           .eq("user_id", userId)
           .is("removed_date", null);
@@ -412,6 +412,11 @@ export default function EditUserPage({ params }) {
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="role">
                   역할 *
+                  {formData.role === "admin" && (
+                    <span className="ml-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                      최고 관리자 역할은 변경할 수 없습니다.
+                    </span>
+                  )}
                 </label>
                 <select
                   id="role"
@@ -419,7 +424,12 @@ export default function EditUserPage({ params }) {
                   value={formData.role}
                   onChange={handleChange}
                   required
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  disabled={formData.role === "admin"}
+                  className={`shadow appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline ${
+                    formData.role === "admin"
+                      ? "text-gray-500 bg-gray-100 cursor-not-allowed"
+                      : "text-gray-700"
+                  }`}
                 >
                   <option value="user">일반 사용자</option>
                   <option value="site_manager">현장 관리자</option>
@@ -427,6 +437,11 @@ export default function EditUserPage({ params }) {
                   <option value="manager">관리자</option>
                   <option value="admin">최고 관리자</option>
                 </select>
+                {formData.role === "admin" && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    보안상 최고 관리자의 역할은 변경할 수 없습니다.
+                  </p>
+                )}
               </div>
 
               <div className="mb-4">
@@ -470,30 +485,47 @@ export default function EditUserPage({ params }) {
             </div>
 
             {/* 담당 공사현장 선택 섹션 */}
+            {/* 담당 공사현장 선택 섹션 */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
-                <label className="block text-gray-700 text-sm font-bold">담당 공사현장</label>
-                <button
-                  type="button"
-                  onClick={handleSelectAllSites}
-                  className="text-sm text-blue-500 hover:text-blue-700"
-                >
-                  {selectedSites.length === constructionSites.length && constructionSites.length > 0
-                    ? "전체 선택 해제"
-                    : "전체 선택"}
-                </button>
+                <div className="flex items-center">
+                  <label className="block text-gray-700 text-sm font-bold">담당 공사현장</label>
+                  {formData.role === "admin" && (
+                    <span className="ml-3 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                      admin은 선택하지 않아도 전체가 자동배정됩니다.
+                    </span>
+                  )}
+                </div>
+                {formData.role !== "admin" && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllSites}
+                    className="text-sm text-blue-500 hover:text-blue-700"
+                  >
+                    {selectedSites.length === locationSites.length && locationSites.length > 0
+                      ? "전체 선택 해제"
+                      : "전체 선택"}
+                  </button>
+                )}
               </div>
 
-              {constructionSites.length > 0 ? (
-                <div className="bg-gray-50 p-3 rounded border max-h-60 overflow-y-auto">
-                  {constructionSites.map((site) => (
+              {locationSites.length > 0 ? (
+                <div
+                  className={`bg-gray-50 p-3 rounded border max-h-60 overflow-y-auto ${
+                    formData.role === "admin" ? "opacity-60" : ""
+                  }`}
+                >
+                  {locationSites.map((site) => (
                     <div key={site.site_id} className="mb-2 last:mb-0">
                       <label className="inline-flex items-center">
                         <input
                           type="checkbox"
                           className="form-checkbox h-5 w-5 text-blue-600"
-                          checked={selectedSites.includes(site.site_id)}
+                          checked={
+                            formData.role === "admin" ? true : selectedSites.includes(site.site_id)
+                          }
                           onChange={() => handleSiteSelect(site.site_id)}
+                          disabled={formData.role === "admin"}
                         />
                         <span className="ml-2">{site.site_name}</span>
                       </label>

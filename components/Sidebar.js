@@ -1,3 +1,5 @@
+//file: \components\Sidebar.js
+
 //file: app/dashboard/reports/dailyWorkerTime/page.js
 
 "use client";
@@ -6,7 +8,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/store/authStore";
-import { hasPermission } from "@/lib/permissions";
+// ❌ 제거됨: import { hasPermission } from "@/lib/permissions";
+
 import {
   FaHome,
   FaBuilding,
@@ -19,12 +22,17 @@ import {
   FaSignOutAlt,
   FaChevronDown,
   FaChevronUp,
+  FaMoneyCheckAlt,
+  FaShieldAlt,
 } from "react-icons/fa";
 import { supabase } from "@/lib/supabase";
 
 export default function Sidebar({ isOpen, toggle }) {
   const pathname = usePathname();
-  const { user, clearAuth } = useAuthStore();
+
+  // 🎯 authStore에서 hasPermission 가져오기 (캐싱된 버전)
+  const { user, clearAuth, hasPermission } = useAuthStore();
+
   const [companyName, setCompanyName] = useState("");
   const [reportsOpen, setReportsOpen] = useState(false);
 
@@ -120,7 +128,8 @@ export default function Sidebar({ isOpen, toggle }) {
               </Link>
             </li> */}
 
-            {hasPermission(user?.role, "VIEW_SITES") && (
+            {/* 🎯 수정됨: hasPermission(user?.role, "VIEW_SITES") → hasPermission("VIEW_SITES") */}
+            {hasPermission("VIEW_SITES") && (
               <li>
                 <Link
                   href="/dashboard/sites"
@@ -134,7 +143,9 @@ export default function Sidebar({ isOpen, toggle }) {
                 </Link>
               </li>
             )}
-            {hasPermission(user?.role, "VIEW_WORKERS") && (
+
+            {/* 🎯 수정됨: hasPermission(user?.role, "VIEW_WORKERS") → hasPermission("VIEW_WORKERS") */}
+            {hasPermission("VIEW_WORKERS") && (
               <li>
                 <Link
                   href="/dashboard/workers"
@@ -162,6 +173,46 @@ export default function Sidebar({ isOpen, toggle }) {
               </Link>
             </li>
 
+            {/* 🎯 수정됨: hasPermission(user?.role, "EDIT_INSURANCE") → hasPermission("EDIT_INSURANCE") */}
+            {hasPermission("EDIT_INSURANCE") && (
+              <li>
+                <Link
+                  href="/dashboard/insurance/insurance-enrollments"
+                  className={`
+                    flex items-center py-3 px-5 text-gray-300 hover:bg-gray-700 hover:text-white
+                    ${
+                      isActiveRoute("/dashboard/insurance/insurance-enrollments")
+                        ? "bg-gray-700 text-white"
+                        : ""
+                    }
+                  `}
+                >
+                  <FaShieldAlt className="mr-3" />
+                  <span>4보험관리</span>
+                </Link>
+              </li>
+            )}
+
+            {/* 🎯 수정됨: hasPermission(user?.role, "EDIT_PAYROLL") → hasPermission("EDIT_PAYROLL") */}
+            {hasPermission("EDIT_PAYROLL") && (
+              <li>
+                <Link
+                  href="/dashboard/payroll/daily_worker"
+                  className={`
+                    flex items-center py-3 px-5 text-gray-300 hover:bg-gray-700 hover:text-white
+                    ${
+                      isActiveRoute("/dashboard/payroll/daily_worker")
+                        ? "bg-gray-700 text-white"
+                        : ""
+                    }
+                  `}
+                >
+                  <FaMoneyCheckAlt className="mr-3" />
+                  <span>일용근로자 급여지급</span>
+                </Link>
+              </li>
+            )}
+
             {/* 보고서 메뉴 - 드롭다운 */}
             <li>
               <button
@@ -173,7 +224,7 @@ export default function Sidebar({ isOpen, toggle }) {
               >
                 <div className="flex items-center">
                   <FaFileInvoiceDollar className="mr-3" />
-                  <span>보고서</span>
+                  <span>신고서</span>
                 </div>
                 {reportsOpen ? <FaChevronUp /> : <FaChevronDown />}
               </button>
@@ -211,30 +262,74 @@ export default function Sidebar({ isOpen, toggle }) {
                       <span className="text-sm">일용근로자소득지급명세서</span>
                     </Link>
                   </li>
+
+                  <li>
+                    <Link
+                      href="/dashboard/reports/dailyWorkerDetailConfirm"
+                      className={`
+                        flex items-center py-2 px-5 pl-12 text-gray-300 hover:bg-gray-700 hover:text-white
+                        ${
+                          pathname === "/dashboard/reports/dailyWorkerDetailConfirm"
+                            ? "bg-gray-700 text-white"
+                            : ""
+                        }
+                      `}
+                    >
+                      <span className="text-sm">근로확인신고서</span>
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href="/dashboard/reports/insuranceEligibilityRegistration"
+                      className={`
+                        flex items-center py-2 px-5 pl-12 text-gray-300 hover:bg-gray-700 hover:text-white
+                        ${
+                          pathname === "/dashboard/reports/insuranceEligibilityRegistration"
+                            ? "bg-gray-700 text-white"
+                            : ""
+                        }
+                      `}
+                    >
+                      <span className="text-sm">자격취득신고서</span>
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href="/dashboard/reports/insuranceEligibilityLoss"
+                      className={`
+                        flex items-center py-2 px-5 pl-12 text-gray-300 hover:bg-gray-700 hover:text-white
+                        ${
+                          pathname === "/dashboard/reports/insuranceEligibilityLoss"
+                            ? "bg-gray-700 text-white"
+                            : ""
+                        }
+                      `}
+                    >
+                      <span className="text-sm">자격상실실신고서</span>
+                    </Link>
+                  </li>
+
+                  <li>
+                    <Link
+                      href="/dashboard/reports/workersCompensationInsuranceReport"
+                      className={`
+                        flex items-center py-2 px-5 pl-12 text-gray-300 hover:bg-gray-700 hover:text-white
+                        ${
+                          pathname === "/dashboard/reports/workersCompensationInsuranceReport"
+                            ? "bg-gray-700 text-white"
+                            : ""
+                        }
+                      `}
+                    >
+                      <span className="text-sm">고용·산재 보험료 신고서</span>
+                    </Link>
+                  </li>
                 </ul>
               )}
             </li>
 
-            {hasPermission(user?.role, "EDIT_INSURANCE") && (
-              <li>
-                <Link
-                  href="/dashboard/insurance/insurance-enrollments"
-                  className={`
-                    flex items-center py-3 px-5 text-gray-300 hover:bg-gray-700 hover:text-white
-                    ${
-                      isActiveRoute("/dashboard/insurance/insurance-enrollments")
-                        ? "bg-gray-700 text-white"
-                        : ""
-                    }
-                  `}
-                >
-                  <FaCog className="mr-3" />
-                  <span>4보험관리</span>
-                </Link>
-              </li>
-            )}
-
-            {hasPermission(user?.role, "EDIT_COMPANIES") && (
+            {/* 🎯 수정됨: hasPermission(user?.role, "EDIT_COMPANIES") → hasPermission("EDIT_COMPANIES") */}
+            {hasPermission("EDIT_COMPANIES") && (
               <li>
                 <Link
                   href="/dashboard/settings"
@@ -251,9 +346,10 @@ export default function Sidebar({ isOpen, toggle }) {
           </ul>
 
           {/* 사용자 관리 항목 - nav 안에 있지만 ul 밖에 둬서 아래 배치 */}
-          <div className="mt-10 w-full border-t border-gray-700 pt-5">
+          <div className="mt-5 w-full border-t border-gray-700 pt-5">
             <ul>
-              {hasPermission(user?.role, "VIEW_USERS") && (
+              {/* 🎯 수정됨: hasPermission(user?.role, "VIEW_USERS") → hasPermission("VIEW_USERS") */}
+              {hasPermission("VIEW_USERS") && (
                 <li>
                   <Link
                     href="/dashboard/users"
@@ -266,7 +362,9 @@ export default function Sidebar({ isOpen, toggle }) {
                   </Link>
                 </li>
               )}
-              {hasPermission(user?.role, "VIEW_COMPANIES") && (
+
+              {/* 🎯 수정됨: hasPermission(user?.role, "VIEW_COMPANIES") → hasPermission("VIEW_COMPANIES") */}
+              {hasPermission("VIEW_COMPANIES") && (
                 <li>
                   <Link
                     href="/dashboard/company"
@@ -280,7 +378,9 @@ export default function Sidebar({ isOpen, toggle }) {
                   </Link>
                 </li>
               )}
-              {hasPermission(user?.role, "EDIT_COMPANIES") && (
+
+              {/* 🎯 수정됨: hasPermission(user?.role, "EDIT_COMPANIES") → hasPermission("EDIT_COMPANIES") */}
+              {hasPermission("EDIT_COMPANIES") && (
                 <li>
                   <Link
                     href="/dashboard/taxInsuranceRates"
@@ -298,7 +398,7 @@ export default function Sidebar({ isOpen, toggle }) {
           </div>
         </nav>
 
-        <div className="absolute  bottom-10 w-full border-t border-gray-700 p-3">
+        <div className="absolute bottom-10 w-full border-t border-gray-700 p-3">
           <div className="flex items-center mb-3 px-2">
             <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-lg font-bold mr-3">
               {user?.name ? user.name.charAt(0) : "?"}

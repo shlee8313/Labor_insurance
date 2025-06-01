@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import RoleGuard from "@/components/RoleGuard";
 import { useAuthStore } from "@/lib/store/authStore";
 import { hasPermission } from "@/lib/permissions";
+import useSiteStore from "@/lib/store/siteStore";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -48,7 +49,19 @@ export default function UsersPage() {
           .eq("id", currentUser.id);
 
         if (userError) throw userError;
-        setUsers(userData || []);
+
+        // 본인의 관리현장 정보도 조회
+        const usersWithSites = await Promise.all(
+          (userData || []).map(async (user) => {
+            const managedSites = await fetchUserManagedSites(user.id, user.role);
+            return {
+              ...user,
+              managedSites: managedSites,
+            };
+          })
+        );
+
+        setUsers(usersWithSites);
         setLoading(false);
         return;
       }
@@ -78,30 +91,84 @@ export default function UsersPage() {
 
       if (usersError) throw usersError;
 
-      // 4. 모든 user_companies 관계 가져오기
-      const { data: userCompanies, error: companiesError } = await supabase
-        .from("user_companies")
-        .select("user_id, company:companies(company_id, company_name)")
-        .in("user_id", userIds);
+      // 4. 각 사용자의 관리현장 정보 조회
+      const usersWithManagedSites = await Promise.all(
+        usersData.map(async (user) => {
+          const managedSites = await fetchUserManagedSites(user.id, user.role);
+          return {
+            ...user,
+            managedSites: managedSites,
+          };
+        })
+      );
 
-      if (companiesError) throw companiesError;
-
-      // 5. 데이터 결합
-      const combinedData = usersData.map((user) => {
-        const companyInfo = userCompanies.find((uc) => uc.user_id === user.id);
-        return {
-          ...user,
-          company: companyInfo ? companyInfo.company : null,
-        };
-      });
-
-      setUsers(combinedData);
+      setUsers(usersWithManagedSites);
       setError(null);
     } catch (error) {
       console.error("사용자 목록 조회 오류:", error);
       setError("사용자 목록을 불러오는 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 사용자의 관리현장 정보를 조회하는 함수 (siteStore 로직 활용)
+  const fetchUserManagedSites = async (userId, userRole) => {
+    try {
+      let sites = [];
+
+      // admin인 경우 회사의 모든 현장 조회 (siteStore의 fetchAllCompanySites 로직 활용)
+      if (userRole === "admin") {
+        // 사용자의 회사 ID 조회
+        const { data: userCompany, error: companyError } = await supabase
+          .from("user_companies")
+          .select("company_id")
+          .eq("user_id", userId)
+          .single();
+
+        if (companyError || !userCompany) {
+          return [];
+        }
+
+        // 회사의 모든 현장 조회
+        const { data: adminSites, error: adminSitesError } = await supabase
+          .from("location_sites")
+          .select("site_id, site_name")
+          .eq("company_id", userCompany.company_id)
+          .order("site_name");
+
+        if (adminSitesError) throw adminSitesError;
+
+        sites = (adminSites || []).map((site) => site.site_name);
+      } else {
+        // 일반 사용자는 배정된 현장만 조회 (siteStore의 fetchAssignedSites 로직 활용)
+        const { data: userSites, error } = await supabase
+          .from("user_location_sites")
+          .select(
+            `
+            site_id,
+            assigned_date,
+            location_sites (
+              site_id,
+              site_name
+            )
+          `
+          )
+          .eq("user_id", userId)
+          .is("removed_date", null)
+          .order("location_sites(site_name)");
+
+        if (error) throw error;
+
+        sites = (userSites || [])
+          .filter((item) => item.location_sites)
+          .map((item) => item.location_sites.site_name);
+      }
+
+      return sites;
+    } catch (error) {
+      console.error(`사용자 ${userId}의 관리현장 조회 오류:`, error);
+      return [];
     }
   };
 
@@ -117,7 +184,7 @@ export default function UsersPage() {
 
       // 사용자-현장 연결 삭제
       const { error: siteError } = await supabase
-        .from("user_construction_sites")
+        .from("user_location_sites")
         .delete()
         .eq("user_id", userId);
 
@@ -194,25 +261,40 @@ export default function UsersPage() {
 
     // admin은 같은 회사의 모든 사용자를 관리할 수 있음
     if (currentUser?.role === "admin") {
-      // 같은 회사인지 확인
-      return user.company?.company_id === myCompanyId;
+      // 같은 회사인지 확인 (간접적으로, users 배열에 포함되어 있으면 같은 회사)
+      return true;
     }
 
     // manager는 같은 회사의 일반 사용자와 site_manager를 관리할 수 있음
     if (currentUser?.role === "manager") {
-      return (
-        user.company?.company_id === myCompanyId &&
-        ["user", "site_manager", "sub_manager"].includes(user.role)
-      );
+      return ["user", "site_manager", "sub_manager"].includes(user.role);
     }
 
     // site_manager와 sub_manager는 같은 회사의 일반 사용자만 관리할 수 있음
     if (["site_manager", "sub_manager"].includes(currentUser?.role)) {
-      return user.role === "user" && user.company?.company_id === myCompanyId;
+      return user.role === "user";
     }
 
     // 일반 사용자는 관리 권한 없음
     return false;
+  };
+
+  // 관리현장 목록을 표시하는 함수
+  const formatManagedSites = (managedSites) => {
+    if (!managedSites || managedSites.length === 0) {
+      return "-";
+    }
+
+    if (managedSites.length === 1) {
+      return managedSites[0];
+    }
+
+    if (managedSites.length <= 3) {
+      return managedSites.join(", ");
+    }
+
+    // 3개 이상인 경우 처음 2개만 표시하고 나머지는 "외 N개"로 표시
+    return `${managedSites.slice(0, 2).join(", ")} 외 ${managedSites.length - 2}개`;
   };
 
   return (
@@ -265,7 +347,7 @@ export default function UsersPage() {
                     역할
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    소속 회사
+                    관리현장
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     상태
@@ -307,8 +389,24 @@ export default function UsersPage() {
                           : "일반 사용자"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {user.company?.company_name || "-"}
+                    {/* <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className="text-sm text-gray-900"
+                        title={
+                          user.managedSites && user.managedSites.length > 3
+                            ? user.managedSites.join(", ")
+                            : ""
+                        }
+                      >
+                        {formatManagedSites(user.managedSites)}
+                      </span>
+                    </td> */}
+                    <td className="px-6 py-4 ">
+                      <span className="text-sm text-gray-900">
+                        {user.managedSites && user.managedSites.length > 0
+                          ? user.managedSites.join(", ")
+                          : "-"}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">

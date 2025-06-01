@@ -7,17 +7,19 @@ import { useAuthStore } from "@/lib/store/authStore";
 import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
+import useSiteStore from "@/lib/store/siteStore"; // ✅ siteStore 추가
 import { formatResidentNumber, formatPhoneNumber } from "@/lib/utils/taxCalculations";
 
 function DailyWorkerDetailConfirm() {
   const { user } = useAuthStore();
+  const { sites, companyName, initialize } = useSiteStore();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSite, setSelectedSite] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState(
     (new Date().getMonth() + 1).toString().padStart(2, "0")
   );
-  const [sites, setSites] = useState([]);
+  // const [sites, setSites] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [workRecords, setWorkRecords] = useState({});
   const [companyInfo, setCompanyInfo] = useState({
@@ -31,7 +33,7 @@ function DailyWorkerDetailConfirm() {
   });
   const [selectedSiteInfo, setSelectedSiteInfo] = useState({
     site_name: "",
-    construction_manager: "",
+    site_manager: "",
     manager_resident_number: "",
     manager_position: "",
     manager_job_description: "",
@@ -41,52 +43,53 @@ function DailyWorkerDetailConfirm() {
   const loadSites = async () => {
     try {
       setIsLoading(true);
-
+      await initialize(user.id);
+      console.log("현장 정보 로드 완료:", sites);
       // 사용자의 회사 ID와 회사 정보 가져오기
-      const { data: userCompany } = await supabase
-        .from("user_companies")
-        .select("company_id, company:companies(*)")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // const { data: userCompany } = await supabase
+      //   .from("user_companies")
+      //   .select("company_id, company:companies(*)")
+      //   .eq("user_id", user.id)
+      //   .maybeSingle();
 
-      if (!userCompany?.company_id) {
-        toast.error("회사 정보를 찾을 수 없습니다.");
-        return;
-      }
+      // if (!userCompany?.company_id) {
+      //   toast.error("회사 정보를 찾을 수 없습니다.");
+      //   return;
+      // }
 
-      // 회사 정보 상태 설정
-      if (userCompany.company) {
-        setCompanyInfo({
-          company_name: userCompany.company.company_name || "",
-          business_number: userCompany.company.business_number || "",
-          workplace_id: userCompany.company.workplace_id || "",
-          address: userCompany.company.address || "",
-          phone_number: userCompany.company.phone_number || "",
-          mobile_number: userCompany.company.mobile_number || "",
-          fax_number: userCompany.company.fax_number || "",
-        });
-      }
+      // // 회사 정보 상태 설정
+      // if (userCompany.company) {
+      //   setCompanyInfo({
+      //     company_name: userCompany.company.company_name || "",
+      //     business_number: userCompany.company.business_number || "",
+      //     workplace_id: userCompany.company.workplace_id || "",
+      //     address: userCompany.company.address || "",
+      //     phone_number: userCompany.company.phone_number || "",
+      //     mobile_number: userCompany.company.mobile_number || "",
+      //     fax_number: userCompany.company.fax_number || "",
+      //   });
+      // }
 
-      // 회사의 공사현장 가져오기
-      const { data, error } = await supabase
-        .from("construction_sites")
-        .select("*")
-        .eq("company_id", userCompany.company_id)
-        .order("site_name");
+      // // 회사의 공사현장 가져오기
+      // const { data, error } = await supabase
+      //   .from("location_sites")
+      //   .select("*")
+      //   .eq("company_id", userCompany.company_id)
+      //   .order("site_name");
 
-      if (error) throw error;
+      // if (error) throw error;
 
-      setSites(data || []);
-      if (data?.length > 0) {
-        setSelectedSite(data[0].site_id);
-        setSelectedSiteInfo({
-          site_name: data[0].site_name || "",
-          construction_manager: data[0].construction_manager || "",
-          manager_resident_number: data[0].manager_resident_number || "",
-          manager_position: data[0].manager_position || "",
-          manager_job_description: data[0].manager_job_description || "",
-        });
-      }
+      // setSites(data || []);
+      // if (data?.length > 0) {
+      //   setSelectedSite(data[0].site_id);
+      //   setSelectedSiteInfo({
+      //     site_name: data[0].site_name || "",
+      //     site_manager: data[0].site_manager || "",
+      //     manager_resident_number: data[0].manager_resident_number || "",
+      //     manager_position: data[0].manager_position || "",
+      //     manager_job_description: data[0].manager_job_description || "",
+      //   });
+      // }
     } catch (error) {
       console.error("현장 데이터 로드 오류:", error);
       toast.error("현장 정보를 불러오는 중 오류가 발생했습니다.");
@@ -231,7 +234,7 @@ function DailyWorkerDetailConfirm() {
   const loadSiteInfo = async (siteId) => {
     try {
       const { data, error } = await supabase
-        .from("construction_sites")
+        .from("location_sites")
         .select("*")
         .eq("site_id", siteId)
         .single();
@@ -240,7 +243,7 @@ function DailyWorkerDetailConfirm() {
 
       setSelectedSiteInfo({
         site_name: data.site_name || "",
-        construction_manager: data.construction_manager || "",
+        site_manager: data.site_manager || "",
         manager_resident_number: data.manager_resident_number || "",
         manager_position: data.manager_position || "",
         manager_job_description: data.manager_job_description || "",
@@ -305,7 +308,7 @@ function DailyWorkerDetailConfirm() {
 
   return (
     <RoleGuard requiredPermission="VIEW_DAILY_REPORTS">
-      <div className="space-y-4 print:m-0 print:p-0">
+      <div className="space-y-1 print:m-0 print:p-0">
         {isLoading && (
           <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50 print:hidden">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
@@ -314,43 +317,58 @@ function DailyWorkerDetailConfirm() {
         )}
 
         {/* 헤더 부분 */}
-        <div className="flex items-center justify-between gap-2 mb-4 print:hidden">
-          <h1 className="text-xl font-bold">일용근로자 근로확인신고서</h1>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 px-6">
+          <div className="flex  gap-12 ">
+            <h1 className="text-2xl font-bold text-gray-600">근로내역확인서</h1>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* 현장 선택 */}
+              <div className="flex flex-col">
+                <label htmlFor="site-select" className="block text-xs font-medium text-gray-700">
+                  현장 선택:
+                </label>
+                <select
+                  className="px-3 py-1 border border-blue-500 rounded bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                >
+                  <option value="">공사현장 선택</option>
+                  {sites.map((site) => (
+                    <option key={site.site_id} value={site.site_id}>
+                      {site.site_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="flex items-center gap-2">
-            <select
-              className="px-3 py-2 border border-gray-300 rounded bg-white"
-              value={selectedSite}
-              onChange={(e) => setSelectedSite(e.target.value)}
-            >
-              <option value="">공사현장 선택</option>
-              {sites.map((site) => (
-                <option key={site.site_id} value={site.site_id}>
-                  {site.site_name}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="month"
-              className="px-3 py-2 border rounded bg-white"
-              value={`${selectedYear}-${selectedMonth}`}
-              onChange={(e) => {
-                const [year, month] = e.target.value.split("-");
-                setSelectedYear(year);
-                setSelectedMonth(month);
-              }}
-            />
-
+              {/* 조회 년월 */}
+              <div className="flex flex-col">
+                <label htmlFor="year-month" className="block text-xs font-medium text-gray-700">
+                  조회 년월:
+                </label>
+                <input
+                  type="month"
+                  className="px-3  border border-blue-500 rounded bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={`${selectedYear}-${selectedMonth}`}
+                  onChange={(e) => {
+                    const [year, month] = e.target.value.split("-");
+                    setSelectedYear(year);
+                    setSelectedMonth(month);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          {/* 우측 버튼들 */}
+          <div className="flex gap-4">
             <button
-              className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="h-10 px-4 bg-gray-500 text-white rounded hover:bg-blue-500"
               onClick={handlePrint}
             >
               출력하기
             </button>
 
             <button
-              className="px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+              className="h-10 px-4 bg-gray-500 text-white rounded hover:bg-blue-500"
               onClick={handleExport}
             >
               파일생성
@@ -358,12 +376,19 @@ function DailyWorkerDetailConfirm() {
           </div>
         </div>
 
+        <div className=" h-1/4 ">
+          <div className="bg-green-500 w-1/4 h-1 inline-block"></div>
+          <div className="bg-blue-500 w-1/4 h-1 inline-block"></div>
+          <div className="bg-yellow-500 w-1/4 h-1 inline-block "></div>
+          <div className="bg-red-500 w-1/4 h-1 inline-block "></div>
+        </div>
+
         {/* 근로내역확인서 내용 */}
         <div className="font-sans text-xs text-gray-800">
           {/* 단일 제목 테이블 */}
-          <div className="w-full mb-4 border">
+          {/* <div className="w-full mb-4 border">
             <div className="p-2 font-bold text-base">근로내역확인서</div>
-          </div>
+          </div> */}
 
           {/* 공통사업장 정보 */}
           <table className="w-full border-collapse mb-4 border border-gray-300">
@@ -427,7 +452,7 @@ function DailyWorkerDetailConfirm() {
                   <span className="text-xs text-gray-500 ml-1">(표준건설업에 해당)</span>
                 </td>
                 <td className="border border-gray-300 p-1.5">
-                  성명: {selectedSiteInfo.construction_manager}
+                  성명: {selectedSiteInfo.site_manager}
                 </td>
                 <td colSpan="3" className="border border-gray-300 p-1.5">
                   (주민등록번호): {formatResidentNumber(selectedSiteInfo.manager_resident_number)}

@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/lib/store/authStore";
+import useSiteStore from "@/lib/store/siteStore"; // 추가
 import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
@@ -21,13 +22,20 @@ import { getCachedSystemSettings } from "@/lib/utils/systemSettings";
 
 function DailyWorkerHomeTax() {
   const { user } = useAuthStore();
+  const {
+    sites,
+    companyName,
+    userCompanyId,
+    isLoading: isSiteLoading,
+    initialize,
+  } = useSiteStore();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSite, setSelectedSite] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState(
     (new Date().getMonth() + 1).toString().padStart(2, "0")
   );
-  const [sites, setSites] = useState([]);
+  // const [sites, setSites] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [workRecords, setWorkRecords] = useState({});
   const [companyInfo, setCompanyInfo] = useState({
@@ -58,10 +66,10 @@ function DailyWorkerHomeTax() {
    */
   useEffect(() => {
     if (user) {
-      loadSites();
+      initialize(user.id); // siteStore 초기화
       loadTaxRates();
     }
-  }, [user]);
+  }, [user, initialize]);
 
   // 세율 정보 로드
   const loadTaxRates = async () => {
@@ -89,57 +97,57 @@ function DailyWorkerHomeTax() {
   }, [selectedSite, selectedYear, selectedMonth]);
 
   // 현장 데이터 로드
-  const loadSites = async () => {
-    try {
-      setIsLoading(true);
+  // const loadSites = async () => {
+  //   try {
+  //     setIsLoading(true);
 
-      // 사용자의 회사 ID와 회사 정보 가져오기
-      const { data: userCompany } = await supabase
-        .from("user_companies")
-        .select(
-          "company_id, company:companies(company_name, business_number, com_number, representative_name, address, phone_number)"
-        )
-        .eq("user_id", user.id)
-        .maybeSingle();
+  //     // 사용자의 회사 ID와 회사 정보 가져오기
+  //     const { data: userCompany } = await supabase
+  //       .from("user_companies")
+  //       .select(
+  //         "company_id, company:companies(company_name, business_number, com_number, representative_name, address, phone_number)"
+  //       )
+  //       .eq("user_id", user.id)
+  //       .maybeSingle();
 
-      if (!userCompany?.company_id) {
-        toast.error("회사 정보를 찾을 수 없습니다.");
-        return;
-      }
+  //     if (!userCompany?.company_id) {
+  //       toast.error("회사 정보를 찾을 수 없습니다.");
+  //       return;
+  //     }
 
-      // 회사 정보 상태 설정
-      if (userCompany.company) {
-        setCompanyInfo({
-          companyName: userCompany.company.company_name || "",
-          businessNumber: userCompany.company.business_number || "",
-          comNumber: userCompany.company.com_number || "",
-          representativeName: userCompany.company.representative_name || "",
-          address: userCompany.company.address || "",
-          phoneNumber: userCompany.company.phone_number || "",
-          email: "", // 추후 이메일 정보가 필요하면 추가
-        });
-      }
+  //     // 회사 정보 상태 설정
+  //     if (userCompany.company) {
+  //       setCompanyInfo({
+  //         companyName: userCompany.company.company_name || "",
+  //         businessNumber: userCompany.company.business_number || "",
+  //         comNumber: userCompany.company.com_number || "",
+  //         representativeName: userCompany.company.representative_name || "",
+  //         address: userCompany.company.address || "",
+  //         phoneNumber: userCompany.company.phone_number || "",
+  //         email: "", // 추후 이메일 정보가 필요하면 추가
+  //       });
+  //     }
 
-      // 회사의 공사현장 가져오기
-      const { data, error } = await supabase
-        .from("construction_sites")
-        .select("site_id, site_name")
-        .eq("company_id", userCompany.company_id)
-        .order("site_name");
+  //     // 회사의 공사현장 가져오기
+  //     const { data, error } = await supabase
+  //       .from("location_sites")
+  //       .select("site_id, site_name")
+  //       .eq("company_id", userCompany.company_id)
+  //       .order("site_name");
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      setSites(data || []);
-      if (data?.length > 0) {
-        setSelectedSite(data[0].site_id);
-      }
-    } catch (error) {
-      console.error("현장 데이터 로드 오류:", error);
-      toast.error("현장 정보를 불러오는 중 오류가 발생했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //     setSites(data || []);
+  //     if (data?.length > 0) {
+  //       setSelectedSite(data[0].site_id);
+  //     }
+  //   } catch (error) {
+  //     console.error("현장 데이터 로드 오류:", error);
+  //     toast.error("현장 정보를 불러오는 중 오류가 발생했습니다.");
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
 
   // 근로자 데이터 로드
   const loadWorkers = async () => {
@@ -147,6 +155,35 @@ function DailyWorkerHomeTax() {
 
     try {
       setIsLoading(true);
+
+      // userCompanyId 체크
+      if (!userCompanyId) {
+        toast.error("회사 정보를 찾을 수 없습니다.");
+        return;
+      }
+
+      // 회사 상세 정보 조회
+      const { data: companyData, error: companyError } = await supabase
+        .from("companies")
+        .select(
+          "company_name, business_number, com_number, representative_name, address, phone_number"
+        )
+        .eq("company_id", userCompanyId)
+        .single();
+
+      if (companyError) throw companyError;
+
+      if (companyData) {
+        setCompanyInfo({
+          companyName: companyData.company_name || "",
+          businessNumber: companyData.business_number || "",
+          comNumber: companyData.com_number || "",
+          representativeName: companyData.representative_name || "",
+          address: companyData.address || "",
+          phoneNumber: companyData.phone_number || "",
+          email: "", // 추후 이메일 정보가 필요하면 추가
+        });
+      }
 
       // Declare yearMonth variable
       const yearMonth = `${selectedYear}-${selectedMonth}`;
@@ -174,9 +211,9 @@ function DailyWorkerHomeTax() {
         .from("workers")
         .select(
           `
-          worker_id, name, resident_number, contact_number, address, 
-          nationality_code, worker_type
-        `
+        worker_id, name, resident_number, contact_number, address, 
+        nationality_code, worker_type
+      `
         )
         .in("worker_id", uniqueWorkerIds)
         .eq("worker_type", "daily"); // daily 타입 근로자만 필터링
@@ -342,8 +379,8 @@ function DailyWorkerHomeTax() {
 
   return (
     <RoleGuard requiredPermission="VIEW_REPORTS">
-      <div className="space-y-4 print:m-0 print:p-0">
-        {isLoading && (
+      <div className="space-y-1 print:m-0 print:p-0">
+        {(isLoading || isSiteLoading) && (
           <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50 z-50 print:hidden">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
             <span className="ml-3 text-white">처리 중...</span>
@@ -351,45 +388,73 @@ function DailyWorkerHomeTax() {
         )}
 
         {/* 헤더 부분 */}
-        <div className="flex items-center justify-end gap-2 mb-4 print:hidden">
-          <select
-            className="px-3 py-2 border border-gray-300 rounded bg-white"
-            value={selectedSite}
-            onChange={(e) => setSelectedSite(e.target.value)}
-          >
-            <option value="">공사현장 선택</option>
-            {sites.map((site) => (
-              <option key={site.site_id} value={site.site_id}>
-                {site.site_name}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 px-6">
+          <div className="flex  gap-12 ">
+            {/* 제목 */}
+            <h1 className="text-xl font-bold text-gray-700">일용자 소득지급명세서</h1>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* 현장 선택 */}
+              <div className="flex flex-col">
+                <label htmlFor="site-select" className="text-xs font-medium text-gray-700 mb-1">
+                  현장 선택
+                </label>
+                <select
+                  id="site-select"
+                  className="h-6 px-1  border border-blue-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedSite || ""}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                >
+                  <option value="">공사현장 선택</option>
+                  {sites.map((site) => (
+                    <option key={site.site_id} value={site.site_id}>
+                      {site.site_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <input
-            type="month"
-            className="px-3 py-2 border rounded bg-white"
-            value={`${selectedYear}-${selectedMonth}`}
-            onChange={(e) => {
-              const [year, month] = e.target.value.split("-");
-              setSelectedYear(year);
-              setSelectedMonth(month);
-              // 날짜 변경 시 세율 정보도 다시 로드
-              loadTaxRates();
-            }}
-          />
-
-          <button
-            className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            onClick={handlePrint}
-          >
-            출력하기
-          </button>
+              {/* 조회 년월 */}
+              <div className="flex flex-col">
+                <label htmlFor="year-month" className="text-xs font-medium text-gray-700 mb-1">
+                  조회 년월
+                </label>
+                <input
+                  type="month"
+                  id="year-month"
+                  className="h-6 px-3 border border-blue-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={`${selectedYear}-${selectedMonth}`}
+                  onChange={(e) => {
+                    const [year, month] = e.target.value.split("-");
+                    setSelectedYear(year);
+                    setSelectedMonth(month);
+                    loadTaxRates();
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          {/* 출력하기 버튼 */}
+          <div className="flex flex-col justify-startpt-6">
+            {" "}
+            {/* 위 여백 맞추기 */}
+            <button
+              className="h-10 px-4 bg-gray-500 text-white text-sm rounded hover:bg-blue-500"
+              onClick={handlePrint}
+            >
+              출력하기
+            </button>
+          </div>
         </div>
-
-        <div className="mb-6">
+        {/* <div className="mb-6">
           <h2 className="text-xl font-bold">일용근로소득 지급명세서(지급자제출용)</h2>
-        </div>
+        </div> */}
 
+        <div className=" h-1/4 ">
+          <div className="bg-green-500 w-1/4 h-1 inline-block"></div>
+          <div className="bg-blue-500 w-1/4 h-1 inline-block"></div>
+          <div className="bg-yellow-500 w-1/4 h-1 inline-block "></div>
+          <div className="bg-red-500 w-1/4 h-1 inline-block "></div>
+        </div>
         {/* 지급자 정보 */}
         <table className="w-full border-collapse mb-6">
           <tbody>

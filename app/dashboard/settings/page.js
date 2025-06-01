@@ -547,8 +547,11 @@ export default function SettingsPage() {
                         <th className="border border-gray-300 bg-gray-100 p-2" rowSpan="2">
                           부호
                         </th>
-                        <th className="border border-gray-300 bg-gray-100 p-2" colSpan="4">
-                          부담액
+                        <th className="border border-gray-300 bg-gray-100 p-2" colSpan="2">
+                          산재보험
+                        </th>
+                        <th className="border border-gray-300 bg-gray-100 p-2" colSpan="2">
+                          고용보험
                         </th>
                         <th className="border border-gray-300 bg-gray-100 p-2" rowSpan="2">
                           대상 근로자(부과구분사유)

@@ -58,7 +58,7 @@ export default function SitesPage() {
 
       try {
         let query = supabase
-          .from("construction_sites")
+          .from("location_sites")
           .select("*, company:companies(company_name)")
           .eq("company_id", userCompanyId); // Filter by company ID
 
@@ -66,7 +66,7 @@ export default function SitesPage() {
         if (user?.role === "site_manager") {
           // 현장 관리자가 담당하는 현장 ID 목록 조회
           const { data: managerSites, error: managerError } = await supabase
-            .from("user_construction_sites")
+            .from("user_location_sites")
             .select("site_id")
             .eq("user_id", user.id)
             .is("removed_date", null);
@@ -106,7 +106,7 @@ export default function SitesPage() {
       setLoading(true);
 
       // 공사현장 삭제
-      const { error } = await supabase.from("construction_sites").delete().eq("site_id", siteId);
+      const { error } = await supabase.from("location_sites").delete().eq("site_id", siteId);
 
       if (error) throw error;
 
@@ -180,7 +180,7 @@ export default function SitesPage() {
                 {sites.map((site) => (
                   <tr key={site.site_id}>
                     <td className="px-6 py-4 whitespace-nowrap font-medium">{site.site_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{site.construction_manager}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{site.site_manager}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {formatPhoneNumber(site.contact_number)}
                     </td>

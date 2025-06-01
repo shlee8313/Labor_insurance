@@ -8,10 +8,12 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import RoleGuard from "@/components/RoleGuard";
 import { useAuthStore } from "@/lib/store/authStore";
+import useSiteStore from "@/lib/store/siteStore";
 
 export default function AddSitePage() {
   const router = useRouter();
   const { user: currentUser } = useAuthStore();
+  const siteStore = useSiteStore();
   const [currentCompany, setCurrentCompany] = useState(null);
   const [formData, setFormData] = useState({
     company_id: "",
@@ -22,11 +24,11 @@ export default function AddSitePage() {
     start_date: "",
     end_date: "",
     // report_date: "",
-    construction_manager: "",
+    site_manager: "",
     manager_job_description: "",
     manager_resident_number: "",
     manager_position: "",
-    construction_manager_phone_number: "",
+    manager_phone_number: "",
     status: "active",
     industrial_accident_rate: "",
   });
@@ -84,7 +86,7 @@ export default function AddSitePage() {
       formattedValue = formatResidentId(value);
     } else if (name === "contact_number") {
       formattedValue = formatPhoneNumber(value);
-    } else if (name == "construction_manager_phone_number") {
+    } else if (name == "manager_phone_number") {
       formattedValue = formatPhoneNumber(value);
     }
 
@@ -92,6 +94,87 @@ export default function AddSitePage() {
       ...prev,
       [name]: formattedValue,
     }));
+  };
+
+  // 본사 현장 찾기 또는 생성 함수
+  const findOrCreateHeadOfficeSite = async (companyId) => {
+    try {
+      console.log(`본사 현장 찾기 시작 - 회사 ID: ${companyId}`);
+
+      // 1. 먼저 "본사"라는 이름의 현장을 찾기
+      let { data: headOfficeSite, error: findError } = await supabase
+        .from("location_sites")
+        .select("*")
+        .eq("company_id", companyId)
+        .eq("site_name", "본사")
+        .maybeSingle();
+
+      if (findError && findError.code !== "PGRST116") {
+        console.error("본사 현장 검색 오류:", findError);
+        throw findError;
+      }
+
+      // 2. 본사 현장이 있으면 반환
+      if (headOfficeSite) {
+        console.log("기존 본사 현장 존재:", headOfficeSite.site_name);
+        return headOfficeSite;
+      }
+
+      // 3. 본사 현장이 없으면 본사 현장을 자동 생성
+      console.log("본사 현장이 없어 자동 생성을 시도합니다.");
+
+      // 회사 정보 조회
+      let companyInfo = null;
+      try {
+        const { data, error: companyError } = await supabase
+          .from("companies")
+          .select("company_name, address, contact_number, representative_name")
+          .eq("company_id", companyId)
+          .maybeSingle();
+
+        if (!companyError) {
+          companyInfo = data;
+        }
+      } catch (err) {
+        console.log("회사 정보 조회 실패, 기본값 사용:", err);
+      }
+
+      // 본사 현장 생성 데이터 준비
+      const newSiteData = {
+        company_id: companyId,
+        site_name: "본사",
+        address: companyInfo?.address || "주소 미등록",
+        contact_number: companyInfo?.contact_number || "000-0000-0000",
+        start_date: new Date().toISOString().split("T")[0],
+        site_manager: companyInfo?.representative_name || "관리자",
+        status: "active",
+      };
+
+      console.log("생성할 본사 현장 데이터:", newSiteData);
+
+      // 본사 현장 생성
+      const { data: newHeadOfficeSite, error: createError } = await supabase
+        .from("location_sites")
+        .insert(newSiteData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error("본사 현장 생성 오류:", createError);
+        throw createError;
+      }
+
+      console.log("본사 현장이 자동으로 생성되었습니다:", newHeadOfficeSite);
+      return newHeadOfficeSite;
+    } catch (error) {
+      console.error("본사 현장 처리 상세 오류:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      return null;
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -104,6 +187,17 @@ export default function AddSitePage() {
         throw new Error("회사 정보가 설정되지 않았습니다. 관리자에게 문의하세요.");
       }
 
+      if (!currentUser?.id) {
+        throw new Error("사용자 정보를 확인할 수 없습니다.");
+      }
+      // ✅ 추가된 부분: 본사 현장 확인 및 생성
+      console.log("본사 현장 확인 및 생성 시작...");
+      const headOfficeSite = await findOrCreateHeadOfficeSite(formData.company_id);
+      if (headOfficeSite) {
+        console.log(`본사 현장 처리 완료: ${headOfficeSite.site_name}`);
+      } else {
+        console.warn("본사 현장 생성에 실패했지만 계속 진행합니다.");
+      }
       // 저장 전에 하이픈 제거
       const cleanedResidentNumber = formData.manager_resident_number
         ? formData.manager_resident_number.replace(/-/g, "")
@@ -113,11 +207,13 @@ export default function AddSitePage() {
         ? formData.contact_number.replace(/-/g, "")
         : null;
 
-      const cleanedManagerNumber = formData.construction_manager_phone_number
-        ? formData.construction_manager_phone_number.replace(/-/g, "")
+      const cleanedManagerNumber = formData.manager_phone_number
+        ? formData.manager_phone_number.replace(/-/g, "")
         : null;
-      const { data, error } = await supabase
-        .from("construction_sites")
+
+      // 1. 현장 생성
+      const { data: newSite, error: siteError } = await supabase
+        .from("location_sites")
         .insert([
           {
             company_id: formData.company_id,
@@ -127,11 +223,11 @@ export default function AddSitePage() {
             contact_number: cleanedContactNumber, // 하이픈 제거된 전화번호
             start_date: formData.start_date || null,
             end_date: formData.end_date || null,
-            construction_manager: formData.construction_manager,
+            site_manager: formData.site_manager,
             manager_job_description: formData.manager_job_description || null,
             manager_resident_number: cleanedResidentNumber, // 하이픈 제거된 주민번호
             manager_position: formData.manager_position || null,
-            construction_manager_phone_number: cleanedManagerNumber || null,
+            manager_phone_number: cleanedManagerNumber || null,
             status: formData.status,
             industrial_accident_rate: formData.industrial_accident_rate
               ? parseFloat(formData.industrial_accident_rate)
@@ -140,8 +236,66 @@ export default function AddSitePage() {
         ])
         .select();
 
-      if (error) throw error;
+      if (siteError) throw siteError;
 
+      const createdSite = newSite[0];
+      console.log("새 현장 생성됨:", createdSite);
+
+      // 2. 사용자 역할에 따른 처리
+      if (currentUser.role === "admin") {
+        // admin은 user_location_sites에 추가하지 않음
+        // siteStore의 fetchAllCompanySites 로직으로 자동 접근
+        console.log("Admin 사용자: user_location_sites 배정 생략");
+      } else {
+        // 일반 사용자는 해당 현장에 자동 배정
+        // siteStore의 fetchAssignedSites 로직에 따라 배정된 현장만 접근 가능
+        const { error: assignmentError } = await supabase.from("user_location_sites").insert([
+          {
+            user_id: currentUser.id,
+            site_id: createdSite.site_id,
+            assigned_date: new Date().toISOString().split("T")[0], // 오늘 날짜
+          },
+        ]);
+
+        if (assignmentError) {
+          console.error("현장 배정 오류:", assignmentError);
+          // 현장은 생성되었지만 배정에 실패한 경우 경고만 로그
+          console.warn("현장 생성은 성공했지만 사용자 배정에 실패했습니다.");
+        } else {
+          console.log(`일반 사용자 ${currentUser.id}를 현장 ${createdSite.site_id}에 배정 완료`);
+        }
+      }
+
+      // 3. siteStore 캐시 무효화 및 재로드
+      try {
+        // siteStore 상태 초기화 후 다시 로드
+        siteStore.resetStore();
+
+        // 현재 사용자 기준으로 사이트 목록 다시 초기화
+        await siteStore.initialize(currentUser.id);
+
+        console.log("siteStore 캐시 갱신 완료");
+      } catch (storeError) {
+        console.error("siteStore 갱신 오류:", storeError);
+        // 스토어 갱신 실패해도 현장 생성은 성공했으므로 계속 진행
+      }
+
+      // 4. workTimeStore 캐시도 무효화 (필요한 경우)
+      try {
+        // workTimeStore가 사용 중이라면 캐시 무효화
+        const workTimeStore = require("@/lib/store/workTimeStore").default;
+        if (workTimeStore && typeof workTimeStore.getState === "function") {
+          // workTimeStore의 sites 목록 갱신
+          workTimeStore.getState().initialize?.(currentUser.id);
+          console.log("workTimeStore 캐시 갱신 완료");
+        }
+      } catch (workStoreError) {
+        console.error("workTimeStore 갱신 오류:", workStoreError);
+        // 선택적 갱신이므로 실패해도 무시
+      }
+
+      // 5. 성공 처리
+      console.log("현장 생성 및 설정 완료, 목록 페이지로 이동");
       router.push("/dashboard/sites");
     } catch (error) {
       console.error("공사현장 추가 오류:", error);
@@ -155,7 +309,8 @@ export default function AddSitePage() {
     <RoleGuard requiredPermission="EDIT_SITES">
       <div className="w-full mx-auto px-4 ">
         <div className="w-full ">
-          {/* {currentCompany && (
+          {/* 현재 접속 회사 정보 표시 (디버깅용 - 필요시 주석 해제) */}
+          {currentCompany && (
             <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -170,11 +325,14 @@ export default function AddSitePage() {
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
                     현재 접속 회사: <span className="font-bold">{currentCompany.company_name}</span>
+                    {currentUser?.role === "admin" && (
+                      <span className="ml-2 text-blue-600">(관리자 - 모든 현장 자동 접근)</span>
+                    )}
                   </p>
                 </div>
               </div>
             </div>
-          )} */}
+          )}
 
           <h1 className="text-2xl font-bold ">현장 추가</h1>
 
@@ -367,15 +525,15 @@ export default function AddSitePage() {
                   <div className="mb-4">
                     <label
                       className="block text-gray-700 text-sm font-bold mb-2"
-                      htmlFor="construction_manager"
+                      htmlFor="site_manager"
                     >
                       공사책임자 *
                     </label>
                     <input
-                      id="construction_manager"
-                      name="construction_manager"
+                      id="site_manager"
+                      name="site_manager"
                       type="text"
-                      value={formData.construction_manager}
+                      value={formData.site_manager}
                       onChange={handleChange}
                       required
                       className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -403,15 +561,15 @@ export default function AddSitePage() {
                   <div className="">
                     <label
                       className="block text-gray-700 text-sm font-bold mb-2"
-                      htmlFor="construction_manager_phone_number"
+                      htmlFor="manager_phone_number"
                     >
                       공사책임자 연락처
                     </label>
                     <input
-                      id="construction_manager_phone_number"
-                      name="construction_manager_phone_number"
+                      id="manager_phone_number"
+                      name="manager_phone_number"
                       type="text"
-                      value={formData.construction_manager_phone_number}
+                      value={formData.manager_phone_number}
                       onChange={handleChange}
                       placeholder="예: 010-1234-5678"
                       className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"

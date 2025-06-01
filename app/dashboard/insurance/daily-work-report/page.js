@@ -30,7 +30,7 @@
 
 //       // 현장 목록 로드
 //       const { data: sitesData, error: sitesError } = await supabase
-//         .from("construction_sites")
+//         .from("location_sites")
 //         .select("*")
 //         .order("site_name");
 
